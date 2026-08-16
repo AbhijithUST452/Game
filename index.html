@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Schrodinger Paradox</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<div class="crt-overlay" aria-hidden="true"></div>
+
+<main id="app">
+
+  <!-- ============ SCREEN: TITLE ============ -->
+  <section class="screen active" id="screen-start">
+    <div class="panel panel-wide">
+      <p class="eyebrow">GAMECRAFT 2026 // ENTRY</p>
+      <h1 class="glitch" data-text="THE SCHRODINGER PARADOX">THE SCHRODINGER PARADOX</h1>
+      <p class="tagline">One box. One cat. Sixty seconds of quantum uncertainty.</p>
+      <button class="btn btn-primary" id="btn-to-mode">ENTER THE GRID</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: MODE SELECT ============ -->
+  <section class="screen" id="screen-mode">
+    <div class="panel panel-wide">
+      <p class="eyebrow">STEP 01</p>
+      <h2>CHOOSE YOUR PROTOCOL</h2>
+      <div class="choice-grid">
+        <button class="choice-card" id="btn-mode-solo">
+          <span class="choice-title">SOLO</span>
+          <span class="choice-desc">You vs. an adaptive AI opponent.</span>
+        </button>
+        <button class="choice-card" id="btn-mode-multi">
+          <span class="choice-title">MULTIPLAYER</span>
+          <span class="choice-desc">Two players, one keyboard. WASD vs Arrow Keys.</span>
+        </button>
+      </div>
+      <button class="btn btn-ghost" data-back="screen-start">BACK</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: SOLO ROLE SELECT ============ -->
+  <section class="screen" id="screen-role">
+    <div class="panel panel-wide">
+      <p class="eyebrow">STEP 02</p>
+      <h2>PICK YOUR SIDE</h2>
+      <div class="choice-grid">
+        <button class="choice-card" id="btn-role-schrodinger">
+          <span class="choice-title">SCHRODINGER</span>
+          <span class="choice-desc">Charge and throw boxes. Land the hit.</span>
+        </button>
+        <button class="choice-card" id="btn-role-cat">
+          <span class="choice-title">THE CAT</span>
+          <span class="choice-desc">Stay unobserved. Dash, evade, survive.</span>
+        </button>
+      </div>
+      <button class="btn btn-ghost" data-back="screen-mode">BACK</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: NAME CAPTURE ============ -->
+  <section class="screen" id="screen-names">
+    <div class="panel panel-wide">
+      <p class="eyebrow">STEP 03</p>
+      <h2>IDENTIFY YOURSELF</h2>
+      <form id="form-names" novalidate>
+
+        <div class="field-group" id="field-schrodinger">
+          <label for="input-name-schrodinger"><span class="tag tag-cyan">SCHRODINGER</span></label>
+          <input type="text" id="input-name-schrodinger" maxlength="16" autocomplete="off" placeholder="Enter name" />
+          <p class="field-error" id="error-schrodinger">Name cannot be empty.</p>
+        </div>
+
+        <div class="field-group" id="field-cat">
+          <label for="input-name-cat"><span class="tag tag-magenta">THE CAT</span></label>
+          <input type="text" id="input-name-cat" maxlength="16" autocomplete="off" placeholder="Enter name" />
+          <p class="field-error" id="error-cat">Name cannot be empty.</p>
+        </div>
+
+        <label class="swap-toggle" id="swap-toggle-wrap">
+          <input type="checkbox" id="chk-swap-roles" />
+          <span>Swap keyboard sides (Schrodinger uses Arrow Keys, Cat uses WASD)</span>
+        </label>
+
+        <button type="submit" class="btn btn-primary" id="btn-to-instructions">CONFIRM</button>
+        <button type="button" class="btn btn-ghost" data-back="screen-mode">BACK</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: INSTRUCTIONS ============ -->
+  <section class="screen" id="screen-instructions">
+    <div class="panel panel-wide">
+      <p class="eyebrow">STEP 04</p>
+      <h2>OPERATING INSTRUCTIONS</h2>
+      <div id="instructions-body" class="instructions-body">
+        <!-- populated by ui.js -->
+      </div>
+      <p class="rules-note">Round length is fixed at <strong>60 seconds</strong>. The clock starts the instant you press Start.</p>
+      <button class="btn btn-primary" id="btn-start-game">START — 60s</button>
+      <button class="btn btn-ghost" data-back="screen-names">BACK</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: GAME ============ -->
+  <section class="screen" id="screen-game">
+    <div class="hud">
+      <div class="hud-block hud-left">
+        <span class="tag tag-cyan" id="hud-schrodinger-name">SCHRODINGER</span>
+        <span class="hud-score" id="hud-schrodinger-score">0</span>
+      </div>
+      <div class="hud-block hud-center">
+        <span class="hud-timer" id="hud-timer">60</span>
+        <span class="hud-timer-label">SECONDS</span>
+      </div>
+      <div class="hud-block hud-right">
+        <span class="tag tag-magenta" id="hud-cat-name">THE CAT</span>
+        <span class="hud-score" id="hud-cat-score">0</span>
+      </div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="game-canvas" width="960" height="600"></canvas>
+      <div class="charge-meter" id="charge-meter"><div class="charge-fill" id="charge-fill"></div></div>
+      <div class="observer-flash" id="observer-flash"></div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: GAME OVER ============ -->
+  <section class="screen" id="screen-gameover">
+    <div class="panel panel-wide">
+      <p class="eyebrow">TIME EXPIRED</p>
+      <h2>SIMULATION COMPLETE</h2>
+      <div class="results-grid">
+        <div class="result-card">
+          <span class="tag tag-cyan" id="result-schrodinger-name">SCHRODINGER</span>
+          <span class="result-score" id="result-schrodinger-score">0</span>
+          <span class="result-label">POINTS</span>
+        </div>
+        <div class="result-vs">VS</div>
+        <div class="result-card">
+          <span class="tag tag-magenta" id="result-cat-name">THE CAT</span>
+          <span class="result-score" id="result-cat-score">0</span>
+          <span class="result-label">POINTS</span>
+        </div>
+      </div>
+      <p class="winner-line" id="winner-line"></p>
+      <div class="achievements" id="achievements"></div>
+      <button class="btn btn-primary" id="btn-rematch">REMATCH — SAME SETUP</button>
+      <button class="btn btn-ghost" id="btn-main-menu">MAIN MENU</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="js/timer.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
