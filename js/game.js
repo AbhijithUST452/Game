@@ -1,986 +1,461 @@
-/* ======================================================
-   THE SCHRODINGER PARADOX — game.js
-   Core simulation: movement, boxes, obstacles, power-ups,
-   hazards, quantum mechanics, AI opponent, rendering.
-   Exposes window.SP.Game
-   ====================================================== */
+(() => {
+  "use strict";
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const TIME_STEP = 1000 / 60;
+  const CELL = 40;
+  const neon = { cyan: "#00F3FF", magenta: "#FF00EA", orange: "#FF9F1C", red: "#ff234d" };
 
-   window.SP = window.SP || {};
+  const $ = id => document.getElementById(id);
+  const screens = ["mode-screen", "name-screen", "instructions-screen", "game-over-screen"].map($);
+  const keys = new Set();
+  let audioCtx = null;
+  let selectedMode = "solo-cat";
+  let lastTime = 0, accumulator = 0, frame = 0;
+  let isPlaying = false;
+  let timeRemaining = 60;
+  let catScore = 0, schrodingerScore = 0, comboMultiplier = 1, lastHitTime = -999;
+  let survivedTicks = 0;
+  let totalHits = 0, catWasHit = false, shotsFired = 0, shotsHit = 0;
+  let boxes = [], particles = [], floatingTexts = [], decoys = [], powerups = [], mapObstacles = [];
+  let hazard = null;
+  let nextPowerupAt = 7, nextHazardAt = 15;
 
-   SP.Game = (function () {
-   
-     // ---------------------------------------------------
-     // Constants
-     // ---------------------------------------------------
-     var W = 960, H = 600;
-     var PLAYER_RADIUS = 20;
-     var PLAYER_SPEED = 230;           // px/sec
-     var OBSTACLE_COUNT = 7;
-     var SPAWN_MARGIN = 60;
-   
-     var CHARGE_MAX = 1.1;             // seconds
-     var BOX_BASE_SPEED = 340;
-     var BOX_SPEED_PER_CHARGE = 260;
-     var BOX_BASE_RANGE = 260;
-     var BOX_RANGE_PER_CHARGE = 380;
-     var BOX_RADIUS = 9;
-   
-     var DASH_DISTANCE = 130;
-     var DASH_COOLDOWN = 2.0;
-   
-     var OBSERVER_STILL_THRESHOLD = 1.5;
-     var OBSERVER_SLOW_DURATION = 2.0;
-     var OBSERVER_SLOW_FACTOR = 0.5;
-   
-     var ORB_MAX_ACTIVE = 2;
-     var ORB_SPAWN_COOLDOWN = 7;
-     var ORB_RADIUS = 13;
-     var POWERUP_USES = 3;
-   
-     var HAZARD_COUNT = 2;
-     var HAZARD_BASE_R = 55;
-     var HAZARD_AMPLITUDE = 22;
-     var HAZARD_DRAIN = 4;             // points per tick
-     var HAZARD_TICK = 0.4;            // seconds
-   
-     var CAT_SURVIVAL_RATE = 2.2;      // points per second
-     var CAT_HIT_PENALTY = 20;
-     var NEAR_MISS_BONUS = 15;
-     var NEAR_MISS_RADIUS = PLAYER_RADIUS + BOX_RADIUS + 26;
-     var COMBO_WINDOW = 3000;          // ms
-   
-     var COLORS = {
-       schrodinger: '#4cf3ff',
-       cat: '#ff3ec9',
-       multi: '#ffb238',
-       tracking: '#4cf3ff',
-       heavy: '#a97bff',
-       wormhole: '#4dffa0',
-       hazard: '#ff4d5e',
-       obstacle: '#1c6d78'
-     };
-   
-     // ---------------------------------------------------
-     // Module state
-     // ---------------------------------------------------
-     var canvas, ctx;
-     var running = false;
-     var rafId = null;
-     var lastTime = 0;
-   
-     var pressedCodes = {};
-     var config = null;
-   
-     var schrodinger, cat;
-     var obstacles = [];
-     var boxes = [];
-     var orbs = [];
-     var hazards = [];
-     var particles = [];
-     var floatingTexts = [];
-   
-     var scores = { schrodinger: 0, cat: 0 };
-     var stats = {
-       throwCount: 0,
-       hitCount: 0,
-       dashCount: 0,
-       maxCombo: 0,
-       catWasHit: false,
-       hazardTouches: 0
-     };
-     var comboCount = 0;
-     var lastHitTime = -99999;
-     var orbSpawnTimer = 0;
-     var gridTime = 0;
-   
-     var shakeTime = 0;
-     var shakeMag = 0;
-   
-     var imgSchrodinger = new Image();
-     var imgCat = new Image();
-     var imgSchrodingerOk = false;
-     var imgCatOk = false;
-     imgSchrodinger.onload = function () { imgSchrodingerOk = true; };
-     imgCat.onload = function () { imgCatOk = true; };
-     imgSchrodinger.onerror = function () { imgSchrodingerOk = false; };
-     imgCat.onerror = function () { imgCatOk = false; };
-     imgSchrodinger.src = 'assets/schrodinger.png';
-     imgCat.src = 'assets/cat.png';
-   
-     // ---------------------------------------------------
-     // Utility
-     // ---------------------------------------------------
-     function rand(a, b) { return a + Math.random() * (b - a); }
-     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-     function dist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
-   
-     function circleRectOverlap(cx, cy, r, rect) {
-       var closestX = clamp(cx, rect.x, rect.x + rect.w);
-       var closestY = clamp(cy, rect.y, rect.y + rect.h);
-       return dist(cx, cy, closestX, closestY) < r;
-     }
-   
-     function isFreeOfObstacles(x, y, r, padding) {
-       for (var i = 0; i < obstacles.length; i++) {
-         var o = obstacles[i];
-         var inflated = { x: o.x - padding, y: o.y - padding, w: o.w + padding * 2, h: o.h + padding * 2 };
-         if (circleRectOverlap(x, y, r, inflated)) return false;
-       }
-       return true;
-     }
-   
-     function findSafeSpot(minDistFromPoints, avoidPoints) {
-       for (var attempt = 0; attempt < 300; attempt++) {
-         var x = rand(SPAWN_MARGIN, W - SPAWN_MARGIN);
-         var y = rand(SPAWN_MARGIN, H - SPAWN_MARGIN);
-         if (!isFreeOfObstacles(x, y, PLAYER_RADIUS, 14)) continue;
-         var ok = true;
-         if (avoidPoints) {
-           for (var i = 0; i < avoidPoints.length; i++) {
-             if (dist(x, y, avoidPoints[i].x, avoidPoints[i].y) < minDistFromPoints) { ok = false; break; }
-           }
-         }
-         if (ok) return { x: x, y: y };
-       }
-       return { x: W / 2, y: H / 2 };
-     }
-   
-     // ---------------------------------------------------
-     // Setup: obstacles, entities, hazards
-     // ---------------------------------------------------
-     function generateObstacles() {
-       obstacles = [];
-       var tries = 0;
-       while (obstacles.length < OBSTACLE_COUNT && tries < 500) {
-         tries++;
-         var w = rand(50, 100);
-         var h = rand(36, 70);
-         var x = rand(90, W - 90 - w);
-         var y = rand(90, H - 90 - h);
-         var rect = { x: x, y: y, w: w, h: h };
-   
-         var overlaps = false;
-         for (var i = 0; i < obstacles.length; i++) {
-           var o = obstacles[i];
-           if (x < o.x + o.w + 40 && x + w + 40 > o.x && y < o.y + o.h + 40 && y + h + 40 > o.y) {
-             overlaps = true; break;
-           }
-         }
-         // keep a clear channel down the middle so a straight box throw is always possible
-         if (x < W / 2 + 30 && x + w > W / 2 - 30 && h > 50) overlaps = true;
-   
-         if (!overlaps) obstacles.push(rect);
-       }
-     }
-   
-     function createEntity(role, controls, isAI) {
-       return {
-         role: role,
-         controls: controls,
-         isAI: isAI,
-         x: 0, y: 0,
-         vx: 0, vy: 0,
-         facingX: role === 'schrodinger' ? 1 : -1,
-         facingY: 0,
-         input: { up: false, down: false, left: false, right: false, action: false },
-         prevAction: false,
-         // schrodinger fields
-         charging: false,
-         chargeTime: 0,
-         standStillTimer: 0,
-         powerup: null,
-         powerupUses: 0,
-         // cat fields
-         dashCooldown: 0,
-         slowTimer: 0,
-         decoys: [],
-         aiTimer: 0,
-         aiTargetX: 0,
-         aiTargetY: 0,
-         aiHolding: false,
-         aiHoldTarget: 0
-       };
-     }
-   
-     function controlsForRole(role) {
-       var ARROWS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', action: 'Enter' };
-       var WASD = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD', action: 'Space' };
-       var SOLO = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', action: 'ShiftAny' };
-   
-       if (config.mode === 'solo') {
-         return (role === config.soloRole) ? SOLO : null;
-       }
-       var wasdRole = config.swapRoles ? 'cat' : 'schrodinger';
-       return (role === wasdRole) ? WASD : ARROWS;
-     }
-   
-     function setupEntities() {
-       var schrodingerControls = controlsForRole('schrodinger');
-       var catControls = controlsForRole('cat');
-   
-       schrodinger = createEntity('schrodinger', schrodingerControls, schrodingerControls === null);
-       cat = createEntity('cat', catControls, catControls === null);
-   
-       var spotA = findSafeSpot(0, []);
-       schrodinger.x = spotA.x; schrodinger.y = spotA.y;
-   
-       var spotB = findSafeSpot(220, [{ x: schrodinger.x, y: schrodinger.y }]);
-       cat.x = spotB.x; cat.y = spotB.y;
-     }
-   
-     function spawnHazards() {
-       hazards = [];
-       for (var i = 0; i < HAZARD_COUNT; i++) {
-         relocateHazard(i, true);
-       }
-     }
-   
-     function relocateHazard(index, initial) {
-       var spot = findSafeSpot(0, []);
-       hazards[index] = {
-         x: spot.x, y: spot.y,
-         baseR: HAZARD_BASE_R,
-         phase: rand(0, Math.PI * 2),
-         lifeTimer: rand(10, 16)
-       };
-     }
-   
-     // ---------------------------------------------------
-     // Input handling
-     // ---------------------------------------------------
-     function onKeyDown(e) {
-       if (!running) return;
-       pressedCodes[e.code] = true;
-       if (e.code === 'Space' || e.code.indexOf('Arrow') === 0) e.preventDefault();
-     }
-     function onKeyUp(e) {
-       pressedCodes[e.code] = false;
-     }
-   
-     function readInputs() {
-       [schrodinger, cat].forEach(function (ent) {
-         if (ent.isAI || !ent.controls) return;
-         var c = ent.controls;
-         ent.input.up = !!pressedCodes[c.up];
-         ent.input.down = !!pressedCodes[c.down];
-         ent.input.left = !!pressedCodes[c.left];
-         ent.input.right = !!pressedCodes[c.right];
-         ent.input.action = c.action === 'ShiftAny'
-           ? (!!pressedCodes['ShiftLeft'] || !!pressedCodes['ShiftRight'])
-           : !!pressedCodes[c.action];
-       });
-     }
-   
-     // ---------------------------------------------------
-     // Movement
-     // ---------------------------------------------------
-     function moveEntity(ent, dt, speedMultiplier) {
-       var dx = (ent.input.right ? 1 : 0) - (ent.input.left ? 1 : 0);
-       var dy = (ent.input.down ? 1 : 0) - (ent.input.up ? 1 : 0);
-   
-       if (dx !== 0 || dy !== 0) {
-         var len = Math.hypot(dx, dy);
-         dx /= len; dy /= len;
-         ent.facingX = dx; ent.facingY = dy;
-         ent.standStillTimer = 0;
-       } else if (ent.role === 'schrodinger') {
-         ent.standStillTimer += dt;
-       }
-   
-       var speed = PLAYER_SPEED * (speedMultiplier || 1);
-       var nx = ent.x + dx * speed * dt;
-       var ny = ent.y + dy * speed * dt;
-   
-       nx = clamp(nx, PLAYER_RADIUS, W - PLAYER_RADIUS);
-       if (isFreeOfObstacles(nx, ent.y, PLAYER_RADIUS, 0)) ent.x = nx;
-   
-       ny = clamp(ny, PLAYER_RADIUS, H - PLAYER_RADIUS);
-       if (isFreeOfObstacles(ent.x, ny, PLAYER_RADIUS, 0)) ent.y = ny;
-     }
-   
-     // ---------------------------------------------------
-     // Schrodinger: charge + throw
-     // ---------------------------------------------------
-     function updateSchrodingerAction(ent, dt) {
-       if (ent.input.action && !ent.prevAction) {
-         ent.charging = true;
-         ent.chargeTime = 0;
-       }
-       if (ent.input.action && ent.charging) {
-         ent.chargeTime = Math.min(CHARGE_MAX, ent.chargeTime + dt);
-         SP.UI.updateChargeMeter((ent.chargeTime / CHARGE_MAX) * 100);
-       }
-       if (!ent.input.action && ent.prevAction && ent.charging) {
-         throwBoxes(ent);
-         ent.charging = false;
-         ent.chargeTime = 0;
-         SP.UI.updateChargeMeter(0);
-       }
-       ent.prevAction = ent.input.action;
-   
-       // Observer Effect
-       if (ent.standStillTimer >= OBSERVER_STILL_THRESHOLD) {
-         triggerObserverEffect();
-         ent.standStillTimer = 0;
-       }
-     }
-   
-     function triggerObserverEffect() {
-       cat.slowTimer = OBSERVER_SLOW_DURATION;
-       SP.UI.flashObserver();
-       spawnParticles(cat.x, cat.y, COLORS.schrodinger, 10);
-     }
-   
-     function throwBoxes(ent) {
-       var chargePct = ent.chargeTime / CHARGE_MAX;
-       var speed = BOX_BASE_SPEED + chargePct * BOX_SPEED_PER_CHARGE;
-       var range = BOX_BASE_RANGE + chargePct * BOX_RANGE_PER_CHARGE;
-   
-       var type = ent.powerup;
-       var angles = [0];
-       if (type === 'multi') angles = [-0.28, 0, 0.28];
-   
-       angles.forEach(function (offset) {
-         var baseAngle = Math.atan2(ent.facingY, ent.facingX);
-         var angle = baseAngle + offset;
-         var vx = Math.cos(angle) * speed;
-         var vy = Math.sin(angle) * speed;
-         boxes.push({
-           x: ent.x + ent.facingX * (PLAYER_RADIUS + 4),
-           y: ent.y + ent.facingY * (PLAYER_RADIUS + 4),
-           vx: vx, vy: vy,
-           traveled: 0,
-           maxRange: range,
-           radius: type === 'heavy' ? BOX_RADIUS * 1.7 : BOX_RADIUS,
-           tracking: type === 'tracking',
-           minDistToCat: 99999,
-           nearMissAwarded: false
-         });
-       });
-   
-       stats.throwCount++;
-   
-       if (type) {
-         ent.powerupUses--;
-         if (ent.powerupUses <= 0) ent.powerup = null;
-       }
-     }
-   
-     function updateBoxes(dt) {
-       for (var i = boxes.length - 1; i >= 0; i--) {
-         var b = boxes[i];
-   
-         if (b.tracking) {
-           var toCatX = cat.x - b.x, toCatY = cat.y - b.y;
-           var toCatLen = Math.hypot(toCatX, toCatY) || 1;
-           var steer = 2.4;
-           b.vx += (toCatX / toCatLen) * steer * 60 * dt;
-           b.vy += (toCatY / toCatLen) * steer * 60 * dt;
-           var spd = Math.hypot(b.vx, b.vy);
-           var maxSpd = BOX_BASE_SPEED + BOX_SPEED_PER_CHARGE;
-           if (spd > maxSpd) { b.vx = (b.vx / spd) * maxSpd; b.vy = (b.vy / spd) * maxSpd; }
-         }
-   
-         var stepX = b.vx * dt, stepY = b.vy * dt;
-         b.x += stepX; b.y += stepY;
-         b.traveled += Math.hypot(stepX, stepY);
-   
-         var dCat = dist(b.x, b.y, cat.x, cat.y);
-         if (dCat < b.minDistToCat) b.minDistToCat = dCat;
-   
-         var offscreen = b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20;
-         var spent = b.traveled >= b.maxRange;
-   
-         if (dCat < b.radius + PLAYER_RADIUS - 4) {
-           handleCatHit();
-           boxes.splice(i, 1);
-           continue;
-         }
-   
-         if (offscreen || spent) {
-           if (!b.nearMissAwarded && b.minDistToCat < NEAR_MISS_RADIUS) {
-             scores.cat += NEAR_MISS_BONUS;
-             addFloatingText(cat.x, cat.y - 30, '+' + NEAR_MISS_BONUS + ' NEAR MISS', COLORS.cat);
-           }
-           boxes.splice(i, 1);
-         }
-       }
-     }
-   
-     function handleCatHit() {
-       var now = performance.now();
-       comboCount = (now - lastHitTime <= COMBO_WINDOW) ? comboCount + 1 : 1;
-       lastHitTime = now;
-       stats.maxCombo = Math.max(stats.maxCombo, comboCount);
-       stats.hitCount++;
-       stats.catWasHit = true;
-   
-       var points = 100 * comboCount;
-       scores.schrodinger += points;
-       scores.cat = Math.max(0, scores.cat - CAT_HIT_PENALTY);
-   
-       addFloatingText(schrodinger.x, schrodinger.y - 34, '+' + points + (comboCount > 1 ? ' x' + comboCount : ''), COLORS.schrodinger);
-       spawnParticles(cat.x, cat.y, COLORS.cat, 22);
-       triggerShake(9, 0.28);
-   
-       var spot = findSafeSpot(180, [{ x: schrodinger.x, y: schrodinger.y }]);
-       cat.x = spot.x; cat.y = spot.y;
-     }
-   
-     // ---------------------------------------------------
-     // Cat: dash
-     // ---------------------------------------------------
-     function updateCatAction(ent, dt) {
-       if (ent.dashCooldown > 0) ent.dashCooldown -= dt;
-   
-       if (ent.input.action && !ent.prevAction && ent.dashCooldown <= 0) {
-         performDash(ent);
-       }
-       ent.prevAction = ent.input.action;
-   
-       if (ent.slowTimer > 0) ent.slowTimer -= dt;
-   
-       for (var i = ent.decoys.length - 1; i >= 0; i--) {
-         ent.decoys[i].life -= dt;
-         if (ent.decoys[i].life <= 0) ent.decoys.splice(i, 1);
-       }
-     }
-   
-     function performDash(ent) {
-       ent.decoys.push({ x: ent.x, y: ent.y, life: 0.45, maxLife: 0.45 });
-   
-       var dx = ent.facingX, dy = ent.facingY;
-       var len = Math.hypot(dx, dy) || 1;
-       dx /= len; dy /= len;
-   
-       var nx = clamp(ent.x + dx * DASH_DISTANCE, PLAYER_RADIUS, W - PLAYER_RADIUS);
-       var ny = clamp(ent.y + dy * DASH_DISTANCE, PLAYER_RADIUS, H - PLAYER_RADIUS);
-   
-       // step back toward the origin until the landing spot is clear of obstacles
-       var steps = 12;
-       for (var s = steps; s >= 0; s--) {
-         var t = s / steps;
-         var tx = ent.x + (nx - ent.x) * t;
-         var ty = ent.y + (ny - ent.y) * t;
-         if (isFreeOfObstacles(tx, ty, PLAYER_RADIUS, 2)) { ent.x = tx; ent.y = ty; break; }
-       }
-   
-       ent.dashCooldown = DASH_COOLDOWN;
-       stats.dashCount++;
-       spawnParticles(ent.x, ent.y, COLORS.cat, 12);
-     }
-   
-     // ---------------------------------------------------
-     // Orbs (power-ups)
-     // ---------------------------------------------------
-     function updateOrbs(dt) {
-       orbSpawnTimer -= dt;
-       if (orbs.length < ORB_MAX_ACTIVE && orbSpawnTimer <= 0) {
-         spawnOrb();
-         orbSpawnTimer = ORB_SPAWN_COOLDOWN;
-       }
-   
-       for (var i = orbs.length - 1; i >= 0; i--) {
-         var orb = orbs[i];
-         orb.bobPhase += dt * 3;
-   
-         var targetEnt = orb.type === 'wormhole' ? cat : schrodinger;
-         if (dist(orb.x, orb.y, targetEnt.x, targetEnt.y) < ORB_RADIUS + PLAYER_RADIUS) {
-           applyOrb(orb, targetEnt);
-           orbs.splice(i, 1);
-         }
-       }
-     }
-   
-     function spawnOrb() {
-       var types = ['multi', 'tracking', 'heavy', 'wormhole'];
-       var type = types[Math.floor(rand(0, types.length))];
-       var spot = findSafeSpot(0, []);
-       orbs.push({ x: spot.x, y: spot.y, type: type, bobPhase: rand(0, 6) });
-     }
-   
-     function applyOrb(orb, ent) {
-       spawnParticles(orb.x, orb.y, COLORS[orb.type], 16);
-       if (orb.type === 'wormhole') {
-         var spot = findSafeSpot(160, [{ x: schrodinger.x, y: schrodinger.y }]);
-         ent.x = spot.x; ent.y = spot.y;
-         addFloatingText(ent.x, ent.y - 30, 'WORMHOLE', COLORS.wormhole);
-       } else {
-         ent.powerup = orb.type;
-         ent.powerupUses = POWERUP_USES;
-         addFloatingText(ent.x, ent.y - 30, orb.type.toUpperCase() + ' BOX x' + POWERUP_USES, COLORS[orb.type]);
-       }
-     }
-   
-     // ---------------------------------------------------
-     // Hazards (radioactive zones)
-     // ---------------------------------------------------
-     var hazardTickTimer = 0;
-   
-     function updateHazards(dt) {
-       hazardTickTimer -= dt;
-       var drainThisTick = hazardTickTimer <= 0;
-       if (drainThisTick) hazardTickTimer = HAZARD_TICK;
-   
-       for (var i = 0; i < hazards.length; i++) {
-         var hz = hazards[i];
-         hz.phase += dt * 1.6;
-         hz.lifeTimer -= dt;
-         var r = hz.baseR + Math.sin(hz.phase) * HAZARD_AMPLITUDE;
-   
-         [schrodinger, cat].forEach(function (ent) {
-           if (dist(ent.x, ent.y, hz.x, hz.y) < r) {
-             if (drainThisTick) {
-               scores[ent.role] = Math.max(0, scores[ent.role] - HAZARD_DRAIN);
-               stats.hazardTouches++;
-               spawnParticles(ent.x, ent.y, COLORS.hazard, 2);
-             }
-           }
-         });
-   
-         if (hz.lifeTimer <= 0) relocateHazard(i, false);
-       }
-     }
-   
-     // ---------------------------------------------------
-     // Particles & floating text & shake
-     // ---------------------------------------------------
-     function spawnParticles(x, y, color, count) {
-       for (var i = 0; i < count; i++) {
-         var angle = rand(0, Math.PI * 2);
-         var speed = rand(40, 180);
-         particles.push({
-           x: x, y: y,
-           vx: Math.cos(angle) * speed,
-           vy: Math.sin(angle) * speed,
-           life: rand(0.3, 0.6),
-           maxLife: 0.6,
-           color: color,
-           size: rand(2, 4)
-         });
-       }
-     }
-   
-     function addFloatingText(x, y, text, color) {
-       floatingTexts.push({ x: x, y: y, text: text, life: 1.1, maxLife: 1.1, color: color });
-     }
-   
-     function triggerShake(mag, time) {
-       shakeMag = mag; shakeTime = time;
-     }
-   
-     function updateJuice(dt) {
-       for (var i = particles.length - 1; i >= 0; i--) {
-         var p = particles[i];
-         p.x += p.vx * dt; p.y += p.vy * dt;
-         p.vx *= 0.94; p.vy *= 0.94;
-         p.life -= dt;
-         if (p.life <= 0) particles.splice(i, 1);
-       }
-       for (var j = floatingTexts.length - 1; j >= 0; j--) {
-         var t = floatingTexts[j];
-         t.y -= 26 * dt;
-         t.life -= dt;
-         if (t.life <= 0) floatingTexts.splice(j, 1);
-       }
-       if (shakeTime > 0) shakeTime -= dt;
-     }
-   
-     // ---------------------------------------------------
-     // AI opponent (solo mode)
-     // ---------------------------------------------------
-     function updateAI(ent, dt) {
-       ent.aiTimer -= dt;
-   
-       if (ent.role === 'schrodinger') {
-         aiSchrodinger(ent, dt);
-       } else {
-         aiCat(ent, dt);
-       }
-     }
-   
-     // AI functions only steer movement and set a *virtual* input.action key —
-     // exactly like a human's keypress. The shared updateSchrodingerAction /
-     // updateCatAction functions (called once per frame for every entity) own
-     // all the actual timers, so nothing is ever advanced twice.
-     function aiSchrodinger(ent, dt) {
-       var target = cat;
-       var d = dist(ent.x, ent.y, target.x, target.y);
-   
-       if (ent.aiTimer <= 0) {
-         ent.aiTimer = rand(0.6, 1.3);
-         var idealDist = 260;
-         if (d < idealDist - 40) {
-           ent.aiTargetX = ent.x - (target.x - ent.x);
-           ent.aiTargetY = ent.y - (target.y - ent.y);
-         } else if (d > idealDist + 60) {
-           ent.aiTargetX = target.x;
-           ent.aiTargetY = target.y;
-         } else {
-           ent.aiTargetX = ent.x + rand(-100, 100);
-           ent.aiTargetY = ent.y + rand(-100, 100);
-         }
-         ent.aiTargetX = clamp(ent.aiTargetX, 60, W - 60);
-         ent.aiTargetY = clamp(ent.aiTargetY, 60, H - 60);
-       }
-   
-       steerTowards(ent, ent.aiTargetX, ent.aiTargetY);
-   
-       // aim toward the cat
-       var dx = target.x - ent.x, dy = target.y - ent.y;
-       var len = Math.hypot(dx, dy) || 1;
-       ent.facingX = dx / len; ent.facingY = dy / len;
-   
-       // decide whether to hold the virtual action key this frame
-       if (!ent.aiHolding) {
-         if (d < 480 && Math.random() < dt * 0.6) {
-           ent.aiHolding = true;
-           ent.aiHoldTarget = rand(0.3, CHARGE_MAX);
-         }
-       } else if (ent.chargeTime >= ent.aiHoldTarget) {
-         ent.aiHolding = false; // release -> throw handled by updateSchrodingerAction
-       }
-       ent.input.action = ent.aiHolding;
-     }
-   
-     function aiCat(ent, dt) {
-       var threat = null, threatDist = 9999;
-       for (var i = 0; i < boxes.length; i++) {
-         var b = boxes[i];
-         var d = dist(b.x, b.y, ent.x, ent.y);
-         var approaching = ((ent.x - b.x) * b.vx + (ent.y - b.y) * b.vy) > 0;
-         if (approaching && d < threatDist) { threatDist = d; threat = b; }
-       }
-   
-       var wantDash = false;
-       if (threat && threatDist < 220) {
-         var perpX = -threat.vy, perpY = threat.vx;
-         var len = Math.hypot(perpX, perpY) || 1;
-         perpX /= len; perpY /= len;
-         if (Math.random() < 0.5) { perpX *= -1; perpY *= -1; }
-         ent.aiTargetX = clamp(ent.x + perpX * 140, 50, W - 50);
-         ent.aiTargetY = clamp(ent.y + perpY * 140, 50, H - 50);
-         wantDash = ent.dashCooldown <= 0 && threatDist < 110;
-       } else if (ent.aiTimer <= 0) {
-         ent.aiTimer = rand(1, 2);
-         ent.aiTargetX = clamp(rand(80, W - 80), 80, W - 80);
-         ent.aiTargetY = clamp(rand(80, H - 80), 80, H - 80);
-       }
-   
-       steerTowards(ent, ent.aiTargetX, ent.aiTargetY);
-   
-       // virtual tap: true for exactly one frame so updateCatAction's edge
-       // detection (press == !prevAction) triggers a single dash, then we
-       // immediately drop it back to false.
-       ent.input.action = wantDash;
-     }
-   
-     function steerTowards(ent, tx, ty) {
-       var dx = tx - ent.x, dy = ty - ent.y;
-       var len = Math.hypot(dx, dy);
-       ent.input.up = ent.input.down = ent.input.left = ent.input.right = false;
-       if (len < 8) return;
-       dx /= len; dy /= len;
-       if (dx > 0.3) ent.input.right = true;
-       if (dx < -0.3) ent.input.left = true;
-       if (dy > 0.3) ent.input.down = true;
-       if (dy < -0.3) ent.input.up = true;
-       if (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2) { ent.facingX = dx; ent.facingY = dy; }
-     }
-   
-     // ---------------------------------------------------
-     // Main update
-     // ---------------------------------------------------
-     function update(dt) {
-       gridTime += dt;
-       readInputs();
-   
-       var schSpeedMul = 1;
-       var catSpeedMul = cat.slowTimer > 0 ? OBSERVER_SLOW_FACTOR : 1;
-   
-       if (schrodinger.isAI) updateAI(schrodinger, dt); 
-       if (cat.isAI) updateAI(cat, dt);
-   
-       moveEntity(schrodinger, dt, schSpeedMul);
-       moveEntity(cat, dt, catSpeedMul);
-   
-       updateSchrodingerAction(schrodinger, dt);
-       updateCatAction(cat, dt);
-   
-       updateBoxes(dt);
-       updateOrbs(dt);
-       updateHazards(dt);
-       updateJuice(dt);
-   
-       scores.cat += CAT_SURVIVAL_RATE * dt;
-   
-       SP.UI.updateScoreDisplay(scores.schrodinger, scores.cat);
-     }
-   
-     // ---------------------------------------------------
-     // Rendering
-     // ---------------------------------------------------
-     function render() {
-       ctx.save();
-       ctx.clearRect(0, 0, W, H);
-   
-       if (shakeTime > 0) {
-         ctx.translate(rand(-shakeMag, shakeMag), rand(-shakeMag, shakeMag));
-       }
-   
-       drawGrid();
-       drawHazards();
-       drawObstacles();
-       drawOrbs();
-       drawDecoys(cat);
-       drawBoxes();
-       drawEntity(schrodinger, COLORS.schrodinger, imgSchrodingerOk ? imgSchrodinger : null);
-       drawEntity(cat, COLORS.cat, imgCatOk ? imgCat : null);
-       drawParticles();
-       drawFloatingTexts();
-   
-       ctx.restore();
-     }
-   
-     function drawGrid() {
-       ctx.strokeStyle = 'rgba(76, 243, 255, 0.06)';
-       ctx.lineWidth = 1;
-       var offset = (gridTime * 12) % 42;
-       for (var x = -42 + offset; x < W; x += 42) {
-         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
-       }
-       for (var y = 0; y < H; y += 42) {
-         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-       }
-     }
-   
-     function drawObstacles() {
-       obstacles.forEach(function (o) {
-         ctx.fillStyle = 'rgba(28, 109, 120, 0.22)';
-         ctx.strokeStyle = COLORS.obstacle;
-         ctx.lineWidth = 2;
-         ctx.shadowColor = COLORS.obstacle;
-         ctx.shadowBlur = 10;
-         ctx.fillRect(o.x, o.y, o.w, o.h);
-         ctx.strokeRect(o.x, o.y, o.w, o.h);
-         ctx.shadowBlur = 0;
-       });
-     }
-   
-     function drawHazards() {
-       hazards.forEach(function (hz) {
-         var r = hz.baseR + Math.sin(hz.phase) * HAZARD_AMPLITUDE;
-         var grad = ctx.createRadialGradient(hz.x, hz.y, 0, hz.x, hz.y, r);
-         grad.addColorStop(0, 'rgba(255, 77, 94, 0.28)');
-         grad.addColorStop(1, 'rgba(255, 77, 94, 0)');
-         ctx.fillStyle = grad;
-         ctx.beginPath(); ctx.arc(hz.x, hz.y, r, 0, Math.PI * 2); ctx.fill();
-         ctx.strokeStyle = 'rgba(255, 77, 94, 0.5)';
-         ctx.lineWidth = 1.5;
-         ctx.beginPath(); ctx.arc(hz.x, hz.y, r, 0, Math.PI * 2); ctx.stroke();
-       });
-     }
-   
-     function drawOrbs() {
-       orbs.forEach(function (orb) {
-         var bob = Math.sin(orb.bobPhase) * 4;
-         ctx.shadowColor = COLORS[orb.type];
-         ctx.shadowBlur = 16;
-         ctx.fillStyle = COLORS[orb.type];
-         ctx.beginPath();
-         ctx.arc(orb.x, orb.y + bob, ORB_RADIUS, 0, Math.PI * 2);
-         ctx.fill();
-         ctx.shadowBlur = 0;
-         ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-         ctx.lineWidth = 1;
-         ctx.beginPath();
-         ctx.arc(orb.x, orb.y + bob, ORB_RADIUS + 3, 0, Math.PI * 2);
-         ctx.stroke();
-       });
-     }
-   
-     function drawDecoys(ent) {
-       ent.decoys.forEach(function (d) {
-         var a = d.life / d.maxLife;
-         ctx.globalAlpha = a * 0.5;
-         ctx.strokeStyle = COLORS.cat;
-         ctx.lineWidth = 2;
-         ctx.beginPath();
-         ctx.arc(d.x, d.y, PLAYER_RADIUS, 0, Math.PI * 2);
-         ctx.stroke();
-         ctx.globalAlpha = 1;
-       });
-     }
-   
-     function drawBoxes() {
-       boxes.forEach(function (b) {
-         // ground shadow to sell the "flies above the wall" read
-         ctx.fillStyle = 'rgba(0,0,0,0.35)';
-         ctx.beginPath();
-         ctx.ellipse(b.x, b.y + 10, b.radius * 0.9, b.radius * 0.4, 0, 0, Math.PI * 2);
-         ctx.fill();
-   
-         var color = b.tracking ? COLORS.tracking : (b.radius > BOX_RADIUS ? COLORS.heavy : COLORS.multi);
-         ctx.shadowColor = color;
-         ctx.shadowBlur = 12;
-         ctx.fillStyle = color;
-         ctx.save();
-         ctx.translate(b.x, b.y);
-         ctx.rotate(gridTime * 4 + b.traveled * 0.01);
-         ctx.fillRect(-b.radius, -b.radius, b.radius * 2, b.radius * 2);
-         ctx.restore();
-         ctx.shadowBlur = 0;
-       });
-     }
-   
-     function drawEntity(ent, color, img) {
-       ctx.save();
-       ctx.shadowColor = color;
-       ctx.shadowBlur = ent.role === 'schrodinger' && ent.charging ? 26 : 14;
-   
-       if (img) {
-         ctx.drawImage(img, ent.x - PLAYER_RADIUS, ent.y - PLAYER_RADIUS, PLAYER_RADIUS * 2, PLAYER_RADIUS * 2);
-       } else {
-         ctx.fillStyle = 'rgba(5,7,13,0.9)';
-         ctx.strokeStyle = color;
-         ctx.lineWidth = 2.5;
-         ctx.beginPath();
-         ctx.arc(ent.x, ent.y, PLAYER_RADIUS, 0, Math.PI * 2);
-         ctx.fill();
-         ctx.stroke();
-   
-         if (ent.role === 'cat') {
-           ctx.beginPath();
-           ctx.moveTo(ent.x - 9, ent.y - 14);
-           ctx.lineTo(ent.x - 15, ent.y - 26);
-           ctx.lineTo(ent.x - 2, ent.y - 16);
-           ctx.moveTo(ent.x + 9, ent.y - 14);
-           ctx.lineTo(ent.x + 15, ent.y - 26);
-           ctx.lineTo(ent.x + 2, ent.y - 16);
-           ctx.stroke();
-         }
-       }
-       ctx.shadowBlur = 0;
-   
-       // facing indicator
-       ctx.fillStyle = color;
-       ctx.beginPath();
-       ctx.arc(ent.x + ent.facingX * (PLAYER_RADIUS + 6), ent.y + ent.facingY * (PLAYER_RADIUS + 6), 3, 0, Math.PI * 2);
-       ctx.fill();
-   
-       if (ent.role === 'cat' && ent.slowTimer > 0) {
-         ctx.strokeStyle = 'rgba(76,243,255,0.7)';
-         ctx.lineWidth = 2;
-         ctx.beginPath();
-         ctx.arc(ent.x, ent.y, PLAYER_RADIUS + 6, 0, Math.PI * 2);
-         ctx.stroke();
-       }
-   
-       ctx.restore();
-     }
-   
-     function drawParticles() {
-       particles.forEach(function (p) {
-         ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-         ctx.fillStyle = p.color;
-         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-         ctx.globalAlpha = 1;
-       });
-     }
-   
-     function drawFloatingTexts() {
-       ctx.font = '13px Consolas, monospace';
-       ctx.textAlign = 'center';
-       floatingTexts.forEach(function (t) {
-         ctx.globalAlpha = Math.max(0, t.life / t.maxLife);
-         ctx.fillStyle = t.color;
-         ctx.shadowColor = t.color;
-         ctx.shadowBlur = 8;
-         ctx.fillText(t.text, t.x, t.y);
-         ctx.shadowBlur = 0;
-         ctx.globalAlpha = 1;
-       });
-     }
-   
-     // ---------------------------------------------------
-     // Loop
-     // ---------------------------------------------------
-     function loop(now) {
-       if (!running) return;
-       var dt = Math.min(0.05, (now - lastTime) / 1000 || 0);
-       lastTime = now;
-   
-       update(dt);
-       render();
-   
-       rafId = requestAnimationFrame(loop);
-     }
-   
-     // ---------------------------------------------------
-     // Achievements
-     // ---------------------------------------------------
-     function computeAchievements() {
-       var list = [];
-       if (!stats.catWasHit) list.push('UNTOUCHABLE — the cat was never observed');
-       if (stats.maxCombo >= 3) list.push('SPEED BOXER — ' + stats.maxCombo + 'x hit combo');
-       if (stats.dashCount >= 5) list.push('GHOST — ' + stats.dashCount + ' superposition dashes');
-       if (stats.throwCount > 0 && stats.hitCount / stats.throwCount >= 0.5) list.push('SHARP SHOOTER — 50%+ accuracy');
-       if (stats.hazardTouches === 0) list.push('CLEAN RUN — avoided all radiation');
-       if (list.length === 0) list.push('PARTICLE PHYSICIST — simulation completed');
-       return list;
-     }
-   
-     // ---------------------------------------------------
-     // Lifecycle: start / end
-     // ---------------------------------------------------
-     function resetState() {
-       boxes = []; orbs = []; particles = []; floatingTexts = [];
-       scores = { schrodinger: 0, cat: 0 };
-       stats = { throwCount: 0, hitCount: 0, dashCount: 0, maxCombo: 0, catWasHit: false, hazardTouches: 0 };
-       comboCount = 0; lastHitTime = -99999;
-       orbSpawnTimer = ORB_SPAWN_COOLDOWN * 0.4;
-       shakeTime = 0; gridTime = 0;
-       hazardTickTimer = 0;
-       pressedCodes = {};
-     }
-   
-     function start(runConfig) {
-       config = runConfig;
-       if (!canvas) {
-         canvas = document.getElementById('game-canvas');
-         ctx = canvas.getContext('2d');
-         document.addEventListener('keydown', onKeyDown);
-         document.addEventListener('keyup', onKeyUp);
-       }
-   
-       resetState();
-       generateObstacles();
-       setupEntities();
-       spawnHazards();
-   
-       running = true;
-       lastTime = performance.now();
-       cancelAnimationFrame(rafId);
-       rafId = requestAnimationFrame(loop);
-   
-       SP.Timer.start(60, function (remaining) {
-         SP.UI.updateTimerDisplay(remaining);
-       }, function () {
-         endGame();
-       });
-     }
-   
-     function endGame() {
-       running = false;
-       cancelAnimationFrame(rafId);
-       SP.UI.updateChargeMeter(0);
-   
-       SP.UI.onGameOver({
-         schrodingerScore: scores.schrodinger,
-         catScore: scores.cat,
-         achievements: computeAchievements()
-       });
-     }
-   
-     return { start: start };
-   })();
+  const imgCat = new Image(); imgCat.src = "assets/cat.png";
+  const imgSchro = new Image(); imgSchro.src = "assets/schrodinger.png";
+  const bgm = $("bgm");
+
+  const cat = makeEntity("cat", 120, 300, 40, 5);
+  const schro = makeEntity("schro", 760, 300, 40, 4);
+  cat.buff = null; cat.buffTimer = 0; cat.dashCooldown = 0;
+  schro.power = "Standard"; schro.ammo = Infinity; schro.shootCooldown = 0; schro.stillFrames = 0; schro.observing = false; schro.slowTimer = 0;
+
+  function makeEntity(type, x, y, size, speed) {
+    return { type, x, y, prevX: x, prevY: y, vx: 0, vy: 0, size, speed, aiPath: [], aiTarget: null, aiRecalc: 0 };
+  }
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const aabb = (a, b) => Math.abs(a.x - b.x) * 2 < (a.size + b.size) && Math.abs(a.y - b.y) * 2 < (a.size + b.size);
+  const circleHit = (e, c) => Math.hypot(e.x - c.x, e.y - c.y) < e.size / 2 + c.r;
+
+  function showScreen(id) { screens.forEach(s => s.classList.toggle("hidden", s.id !== id)); }
+  function hideScreens() { screens.forEach(s => s.classList.add("hidden")); }
+
+  document.querySelectorAll("[data-mode]").forEach(btn => btn.addEventListener("click", () => {
+    selectedMode = btn.dataset.mode;
+    sfx("btnClick");
+    const soloCat = selectedMode === "solo-cat";
+    const soloSchro = selectedMode === "solo-schro";
+    $("cat-name").value = soloSchro ? "AI Cat" : "Neon Cat";
+    $("schro-name").value = soloCat ? "AI Schrödinger" : "Dr. Schrödinger";
+    showScreen("name-screen");
+  }));
+  $("back-to-mode").onclick = () => { sfx("click"); showScreen("mode-screen"); };
+  $("names-next").onclick = () => { sfx("click"); populateInstructions(); showScreen("instructions-screen"); };
+  $("start-game").onclick = () => { sfx("unlock"); startGame(); };
+  $("replay").onclick = () => { sfx("btnClick"); startGame(); };
+  $("change-mode").onclick = () => { sfx("click"); showScreen("mode-screen"); };
+  $("volume-slider").oninput = e => { bgm.volume = Number(e.target.value); };
+  $("mute-btn").onclick = () => { bgm.muted = !bgm.muted; $("mute-btn").textContent = bgm.muted ? "Unmute" : "Mute"; sfx("click"); };
+  addEventListener("keydown", e => { keys.add(e.key.toLowerCase()); if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) e.preventDefault(); resumeAudio(); });
+  addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+  document.body.addEventListener("pointerdown", resumeAudio, { once: false });
+
+  function resumeAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    bgm.volume = Number($("volume-slider").value);
+    bgm.play().catch(() => startSynthBgm());
+  }
+  let synthBgmStarted = false;
+  function startSynthBgm() {
+    if (!audioCtx || synthBgmStarted) return;
+    synthBgmStarted = true;
+    const bass = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    bass.type = "sawtooth"; bass.frequency.value = 55; gain.gain.value = .025;
+    bass.connect(gain).connect(audioCtx.destination); bass.start();
+  }
+  function sfx(type) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    const t = audioCtx.currentTime;
+    const settings = {
+      click: ["sine", 450, 180, .12, .05], btnClick: ["triangle", 550, 220, .18, .06], shoot: ["square", 170, 70, .18, .045],
+      dash: ["sawtooth", 720, 140, .25, .05], unlock: ["triangle", 260, 900, .4, .07], hit: ["square", 90, 28, .32, .08]
+    }[type] || ["sine", 300, 100, .15, .04];
+    o.type = settings[0]; o.frequency.setValueAtTime(settings[1], t); o.frequency.exponentialRampToValueAtTime(settings[2], t + settings[3]);
+    g.gain.setValueAtTime(settings[4], t); g.gain.exponentialRampToValueAtTime(.0001, t + settings[3]);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + settings[3]);
+  }
+
+  function populateInstructions() {
+    const catName = sanitizeName($("cat-name").value, "Cat");
+    const schroName = sanitizeName($("schro-name").value, "Schrödinger");
+    $("cat-name-label").textContent = catName; $("schro-name-label").textContent = schroName;
+    const lines = {
+      "solo-cat": `<b>${catName}</b>: Arrow keys to move, Shift to dash. Survive 60 seconds. AI Schrödinger hunts and shoots.<br><br>Score: Cat +5 per second, Schrödinger +100 per hit. Missed AI shots cost -20.`,
+      "solo-schro": `<b>${schroName}</b>: Arrow keys to move, Space to shoot. Box the AI Cat before time runs out.<br><br>Stand still for 90 frames to trigger Observer Effect and slow the Cat. Misses cost -50.`,
+      "multi": `<b>${catName}</b>: WASD move, Shift dash.<br><b>${schroName}</b>: Arrow keys move, Space shoot.<br><br>Local PvP. Cat survives, Schrödinger boxes. Misses cost -50.`
+    }[selectedMode];
+    $("instructions-title").textContent = selectedMode === "multi" ? "Local PvP Rules" : "Solo Mode Rules";
+    $("instructions-body").innerHTML = lines + `<br><br>Powerups spawn every 7 seconds. Circles help the Cat. Triangles upgrade Schrödinger's next 3 shots. Red hazard zones are dangerous to both players.`;
+  }
+  function sanitizeName(v, fallback) { return (v || fallback).replace(/[<>]/g, "").trim().slice(0, 15) || fallback; }
+
+  function startGame() {
+    hideScreens(); resumeAudio();
+    isPlaying = true; timeRemaining = 60; catScore = 0; schrodingerScore = 0; comboMultiplier = 1; lastHitTime = -999;
+    survivedTicks = 0; totalHits = 0; catWasHit = false; shotsFired = 0; shotsHit = 0;
+    boxes = []; particles = []; floatingTexts = []; decoys = []; powerups = []; hazard = null; nextPowerupAt = 7; nextHazardAt = 15; frame = 0;
+    Object.assign(cat, makeEntity("cat", 120, 300, 40, 5), { buff: null, buffTimer: 0, dashCooldown: 0 });
+    Object.assign(schro, makeEntity("schro", 760, 300, 40, 4), { power: "Standard", ammo: Infinity, shootCooldown: 0, stillFrames: 0, observing: false, slowTimer: 0 });
+    generateObstacles(); updateHud(); lastTime = performance.now(); accumulator = 0;
+  }
+
+  function generateObstacles() {
+    mapObstacles = [];
+    let attempts = 0;
+    while (mapObstacles.length < 6 && attempts++ < 400) {
+      const o = { x: rand(170, 720), y: rand(100, 500), w: rand(55, 125), h: rand(45, 100) };
+      if (Math.hypot(o.x - cat.x, o.y - cat.y) < 140 || Math.hypot(o.x - schro.x, o.y - schro.y) < 140) continue;
+      if (mapObstacles.some(p => !(o.x + o.w + 45 < p.x || o.x > p.x + p.w + 45 || o.y + o.h + 45 < p.y || o.y > p.y + p.h + 45))) continue;
+      mapObstacles.push(o);
+    }
+  }
+
+  requestAnimationFrame(loop);
+  function loop(ts) {
+    const delta = Math.min(ts - lastTime, 100); lastTime = ts; accumulator += delta;
+    while (accumulator >= TIME_STEP) { if (isPlaying) update(); accumulator -= TIME_STEP; }
+    draw(); requestAnimationFrame(loop);
+  }
+
+  function update() {
+    frame++; timeRemaining -= 1 / 60; if (timeRemaining <= 0) return endGame();
+    survivedTicks++; if (survivedTicks >= 60) { survivedTicks = 0; catScore += 5; addText(cat.x, cat.y - 28, "+5", neon.cyan); }
+    if (60 - timeRemaining >= nextPowerupAt) { spawnPowerup(); nextPowerupAt += 7; }
+    if (60 - timeRemaining >= nextHazardAt) { spawnHazard(); nextHazardAt += 15; }
+    updatePlayer(cat, isCatAI()); updateSchro(isSchroAI());
+    updateBoxes(); updatePowerups(); updateHazard(); updateFx(); updateHud();
+  }
+  const isCatAI = () => selectedMode === "solo-schro";
+  const isSchroAI = () => selectedMode === "solo-cat";
+
+  function updatePlayer(e, ai) {
+    e.prevX = e.x; e.prevY = e.y; let dx = 0, dy = 0;
+    if (ai) aiCatMove();
+    else {
+      const useWasd = selectedMode === "multi";
+      dx += keys.has(useWasd ? "a" : "arrowleft") ? -1 : 0; dx += keys.has(useWasd ? "d" : "arrowright") ? 1 : 0;
+      dy += keys.has(useWasd ? "w" : "arrowup") ? -1 : 0; dy += keys.has(useWasd ? "s" : "arrowdown") ? 1 : 0;
+      const mag = Math.hypot(dx, dy) || 1; const slow = schro.observing ? .5 : 1; const buff = e.buff === "Zoomies" ? 1.8 : 1;
+      e.x += dx / mag * e.speed * slow * buff; e.y += dy / mag * e.speed * slow * buff;
+      if (keys.has("shift") && e.dashCooldown <= 0 && (dx || dy)) dashCat(dx / mag, dy / mag);
+      if (e.dashCooldown > 0) e.dashCooldown--;
+    }
+    if (e.buffTimer > 0 && --e.buffTimer <= 0) expireCatBuff();
+    constrainEntity(e, e.buff === "Ghost");
+  }
+  function dashCat(nx, ny) {
+    cat.x += nx * 150; cat.y += ny * 150; cat.dashCooldown = 120; sfx("dash");
+    for (let i = 0; i < 7; i++) decoys.push({ x: cat.prevX - nx * i * 11, y: cat.prevY - ny * i * 11, life: 32 - i * 3 });
+  }
+  function updateSchro(ai) {
+    schro.prevX = schro.x; schro.prevY = schro.y;
+    if (schro.shootCooldown > 0) schro.shootCooldown--; if (schro.slowTimer > 0) schro.slowTimer--;
+    if (ai) aiSchroMove();
+    else {
+      let dx = 0, dy = 0; dx += keys.has("arrowleft") ? -1 : 0; dx += keys.has("arrowright") ? 1 : 0; dy += keys.has("arrowup") ? -1 : 0; dy += keys.has("arrowdown") ? 1 : 0;
+      const mag = Math.hypot(dx, dy) || 1; const slow = schro.slowTimer > 0 ? .55 : 1;
+      schro.x += dx / mag * schro.speed * slow; schro.y += dy / mag * schro.speed * slow;
+      if (keys.has(" ")) shootAt(cat.x, cat.y);
+      schro.stillFrames = dx || dy ? 0 : schro.stillFrames + 1;
+    }
+    schro.observing = schro.stillFrames >= 90;
+    constrainEntity(schro, false);
+  }
+
+  function constrainEntity(e, ghost) {
+    e.x = clamp(e.x, e.size / 2, W - e.size / 2); e.y = clamp(e.y, e.size / 2, H - e.size / 2);
+    if (ghost && e.type === "cat") return;
+    for (const o of mapObstacles) {
+      if (rectEntityHit(e, o)) { e.x = e.prevX; e.y = e.prevY; break; }
+    }
+  }
+  function rectEntityHit(e, o) { return e.x + e.size / 2 > o.x && e.x - e.size / 2 < o.x + o.w && e.y + e.size / 2 > o.y && e.y - e.size / 2 < o.y + o.h; }
+  function expireCatBuff() {
+    const old = cat.buff; cat.buff = null;
+    if (old === "Ghost") {
+      for (let i = 0; i < 80 && mapObstacles.some(o => rectEntityHit(cat, o)); i++) { cat.x = rand(45, W - 45); cat.y = rand(70, H - 45); }
+    }
+  }
+
+  function shootAt(tx, ty) {
+    if (schro.shootCooldown > 0) return; schro.shootCooldown = 22; sfx("shoot");
+    const ang = Math.atan2(ty - schro.y, tx - schro.x);
+    const kind = schro.power;
+    if (kind === "Multi") [-.22, 0, .22].forEach(a => makeBox(ang + a, kind, true)); else makeBox(ang, kind, false);
+    shotsFired++;
+    if (schro.ammo !== Infinity && --schro.ammo <= 0) { schro.power = "Standard"; schro.ammo = Infinity; }
+  }
+  function makeBox(ang, kind, volley) {
+    const heavy = kind === "Heavy";
+    boxes.push({ x: schro.x, y: schro.y, vx: Math.cos(ang) * (heavy ? 5 : 8), vy: Math.sin(ang) * (heavy ? 5 : 8), size: heavy ? 34 : 22, life: 95, kind, hit: false, volley });
+  }
+  function updateBoxes() {
+    for (const b of boxes) {
+      if (b.kind === "Tracking") {
+        const a = Math.atan2(cat.y - b.y, cat.x - b.x), sp = Math.hypot(b.vx, b.vy);
+        b.vx = b.vx * .94 + Math.cos(a) * sp * .06; b.vy = b.vy * .94 + Math.sin(a) * sp * .06;
+      }
+      b.x += b.vx; b.y += b.vy; b.life--;
+      if (cat.buff !== "Ghost" && aabb(b, cat)) { hitCat(b); b.life = 0; b.hit = true; }
+      if (mapObstacles.some(o => rectEntityHit(b, o))) b.life = 0;
+      if (b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) b.life = 0;
+    }
+    const before = boxes.length;
+    boxes = boxes.filter(b => {
+      if (b.life > 0) return true;
+      if (!b.hit) missPenalty();
+      burst(b.x, b.y, b.hit ? neon.orange : neon.magenta);
+      return false;
+    });
+  }
+  function hitCat(b) {
+    const now = 60 - timeRemaining; comboMultiplier = now - lastHitTime <= 3 ? Math.min(5, comboMultiplier + 1) : 1; lastHitTime = now;
+    const pts = 100 * comboMultiplier; schrodingerScore += pts; totalHits++; shotsHit++; catWasHit = true; sfx("hit"); addText(cat.x, cat.y - 35, `+${pts} x${comboMultiplier}`, neon.orange);
+  }
+  function missPenalty() {
+    const p = selectedMode === "solo-cat" ? 20 : 50; const before = schrodingerScore; schrodingerScore = Math.max(0, schrodingerScore - p); if (before > 0) addText(schro.x, schro.y - 34, `-${before - schrodingerScore}`, neon.magenta);
+  }
+
+  function spawnPowerup() {
+    if (powerups.length >= 3) return;
+    let p;
+    for (let i = 0; i < 50; i++) {
+      const catSide = Math.random() < .5;
+      p = { x: rand(50, W - 50), y: rand(75, H - 55), size: 24, side: catSide ? "cat" : "schro", type: catSide ? pick(["Zoomies", "Ghost", "Wormhole"]) : pick(["Multi", "Tracking", "Heavy"]) };
+      if (!mapObstacles.some(o => rectEntityHit(p, o))) break;
+    }
+    powerups.push(p);
+  }
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  function nearestPowerupFor(side, entity) {
+    return powerups
+      .filter(p => p.side === side)
+      .map(p => ({ ...p, dist: Math.hypot(p.x - entity.x, p.y - entity.y) }))
+      .sort((a, b) => a.dist - b.dist)[0];
+  }
+  function updatePowerups() {
+    powerups = powerups.filter(p => {
+      if (p.side === "cat" && aabb(p, cat)) { applyCatPower(p.type); return false; }
+      if (p.side === "schro" && aabb(p, schro)) { schro.power = p.type; schro.ammo = 3; addText(schro.x, schro.y - 28, p.type, neon.magenta); sfx("unlock"); return false; }
+      return true;
+    });
+  }
+  function applyCatPower(type) {
+    addText(cat.x, cat.y - 28, type, neon.cyan); sfx("unlock");
+    if (type === "Wormhole") { safeTeleport(cat); burst(cat.x, cat.y, neon.cyan); return; }
+    cat.buff = type; cat.buffTimer = 240;
+  }
+  function safeTeleport(e) {
+    for (let i = 0; i < 100; i++) { e.x = rand(45, W - 45); e.y = rand(75, H - 45); if (!mapObstacles.some(o => rectEntityHit(e, o)) && Math.hypot(e.x - schro.x, e.y - schro.y) > 180) return; }
+  }
+
+  function spawnHazard() { hazard = { x: rand(120, W - 120), y: rand(120, H - 120), r: 8, maxR: rand(60, 95), life: 480 }; }
+  function updateHazard() {
+    if (!hazard) return; hazard.life--; hazard.r = Math.min(hazard.maxR, hazard.r + .45);
+    if (circleHit(cat, hazard)) { const before = catScore; catScore = Math.max(0, catScore - 2); if (before > catScore && frame % 12 === 0) addText(cat.x, cat.y - 26, `-${before - catScore}`, neon.red); }
+    if (circleHit(schro, hazard)) schro.slowTimer = 15;
+    if (hazard.life <= 0) hazard = null;
+  }
+
+  function pointBlocked(x, y, pad = 20) {
+    if (x < pad || y < pad || x > W - pad || y > H - pad) return true;
+    return mapObstacles.some(o => x + pad > o.x && x - pad < o.x + o.w && y + pad > o.y && y - pad < o.y + o.h);
+  }
+  function segmentIntersectsExpandedRect(a, b, o, pad) {
+    const minX = o.x - pad, maxX = o.x + o.w + pad;
+    const minY = o.y - pad, maxY = o.y + o.h + pad;
+    let t0 = 0, t1 = 1;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const clip = (p, q) => {
+      if (Math.abs(p) < 0.0001) return q >= 0;
+      const r = q / p;
+      if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+      else { if (r < t0) return false; if (r < t1) t1 = r; }
+      return true;
+    };
+    return clip(-dx, a.x - minX) && clip(dx, maxX - a.x) && clip(-dy, a.y - minY) && clip(dy, maxY - a.y) && t1 > 0 && t0 < 1;
+  }
+  function hasLineOfSight(from, to, pad = 26) {
+    return !mapObstacles.some(o => segmentIntersectsExpandedRect(from, to, o, pad));
+  }
+  function hasClearShot(from, to) {
+    const projectilePadding = schro.power === "Heavy" ? 26 : 20;
+    return hasLineOfSight(from, to, projectilePadding);
+  }
+  function findShootingPosition() {
+    const candidates = [];
+    const addCandidate = (x, y) => {
+      if (pointBlocked(x, y, schro.size / 2 + 4)) return;
+      const target = { x, y, size: 20 };
+      if (!hasClearShot(target, cat)) return;
+      const distToCat = Math.hypot(x - cat.x, y - cat.y);
+      if (distToCat < 115 || distToCat > 390) return;
+      const distToSchro = Math.hypot(x - schro.x, y - schro.y);
+      const currentSideBonus = hasClearShot(schro, cat) ? 0 : -80;
+      candidates.push({ x, y, size: 20, score: distToSchro + Math.abs(distToCat - 235) * 0.8 + currentSideBonus });
+    };
+
+    for (const r of [135, 175, 215, 255, 300, 350]) {
+      for (let i = 0; i < 24; i++) {
+        const a = i / 24 * Math.PI * 2 + (frame % 180) * 0.008;
+        addCandidate(cat.x + Math.cos(a) * r, cat.y + Math.sin(a) * r);
+      }
+    }
+
+    // If the ring search fails, scan the BFS grid for any legal firing lane.
+    // This prevents the AI from getting stuck on the wrong side of a wall.
+    if (!candidates.length) {
+      for (let y = 60; y < H - 30; y += CELL) {
+        for (let x = 40; x < W - 30; x += CELL) addCandidate(x + CELL / 2, y + CELL / 2);
+      }
+    }
+    return candidates.sort((a, b) => a.score - b.score)[0] || bestEscapePoint();
+  }
+  function aiSchroMove() {
+    const d = Math.hypot(cat.x - schro.x, cat.y - schro.y);
+    const visible = hasLineOfSight(schro, cat);
+    const usefulPowerup = nearestPowerupFor("schro", schro);
+
+    // If the Cat is visible, attack. If not, reposition instead of standing still
+    // or wasting shots into walls.
+    if (visible && d <= 320) {
+      schro.stillFrames++;
+      if (frame % 38 === 0 || d < 230) shootAt(cat.x, cat.y);
+      return;
+    }
+
+    schro.stillFrames = 0;
+
+    // Fetch Schrödinger powerups when the Cat is not immediately shootable.
+    // This makes the AI actively collect triangle abilities instead of idling.
+    if (usefulPowerup && Math.hypot(usefulPowerup.x - schro.x, usefulPowerup.y - schro.y) < 420) {
+      aiMoveWithPath(schro, usefulPowerup);
+      return;
+    }
+
+    // Move to a clean firing lane around the Cat. This solves the wall-camping case:
+    // the AI goes around the obstacle, then fires only when line of sight is clear.
+    const firingSpot = findFiringPosition();
+    if (firingSpot) {
+      aiMoveWithPath(schro, firingSpot);
+      return;
+    }
+
+    // Last resort: keep chasing the Cat through the normal BFS pathfinder.
+    aiMoveWithPath(schro, cat);
+  }
+  function aiCatMove() {
+    const nearPower = nearestPowerupFor("cat", cat);
+    let target = null;
+
+    // In Solo Schrödinger mode, the AI Cat actively seeks Cat abilities.
+    // Pickups are used on collection: Zoomies/Ghost activate, Wormhole teleports immediately.
+    if (selectedMode === "solo-schro" && nearPower && nearPower.dist < 480 && !cat.buff) target = nearPower;
+    else if (nearPower && nearPower.dist < 300 && !cat.buff) target = nearPower;
+    else target = bestEscapePoint();
+
+    aiMoveWithPath(cat, target);
+    if (Math.hypot(cat.x - schro.x, cat.y - schro.y) < 135 && cat.dashCooldown <= 0) { const a = Math.atan2(cat.y - schro.y, cat.x - schro.x); dashCat(Math.cos(a), Math.sin(a)); }
+    if (cat.dashCooldown > 0) cat.dashCooldown--;
+  }
+  function bestEscapePoint() {
+    const pts = [[60,80],[450,80],[840,80],[60,300],[840,300],[60,540],[450,540],[840,540]].map(([x,y])=>({x,y,size:20}));
+    return pts.sort((a,b)=>Math.hypot(b.x-schro.x,b.y-schro.y)-Math.hypot(a.x-schro.x,a.y-schro.y))[0];
+  }
+
+  function aiMoveWithPath(e, target) {
+    if (e.aiRecalc-- <= 0 || !e.aiPath.length) { e.aiPath = bfsPath(e, target); e.aiRecalc = 20; }
+    const n = e.aiPath[0]; if (!n) { e.aiRecalc = 0; return; }
+    const tx = n.x * CELL + CELL / 2, ty = n.y * CELL + CELL / 2; const a = Math.atan2(ty - e.y, tx - e.x);
+    const slow = e.type === "schro" && e.slowTimer > 0 ? .55 : 1; const sp = e.speed * (e.type === "cat" && e.buff === "Zoomies" ? 1.8 : 1) * slow;
+    e.x += Math.cos(a) * sp; e.y += Math.sin(a) * sp;
+    if (Math.hypot(tx - e.x, ty - e.y) < 8) e.aiPath.shift();
+  }
+  function bfsPath(e, target) {
+    const cols = Math.floor(W / CELL), rows = Math.floor(H / CELL);
+    const block = Array.from({length: rows}, () => Array(cols).fill(false));
+    for (const o of mapObstacles) {
+      const pad = e.size / 2;
+      const x0 = clamp(Math.floor((o.x - pad) / CELL), 0, cols-1), x1 = clamp(Math.floor((o.x + o.w + pad) / CELL), 0, cols-1);
+      const y0 = clamp(Math.floor((o.y - pad) / CELL), 0, rows-1), y1 = clamp(Math.floor((o.y + o.h + pad) / CELL), 0, rows-1);
+      for (let y=y0;y<=y1;y++) for (let x=x0;x<=x1;x++) block[y][x] = true;
+    }
+    if (e.type === "cat" && e.buff === "Ghost") block.forEach(r => r.fill(false));
+    const start = { x: clamp(Math.floor(e.x/CELL),0,cols-1), y: clamp(Math.floor(e.y/CELL),0,rows-1) };
+    const goal = { x: clamp(Math.floor(target.x/CELL),0,cols-1), y: clamp(Math.floor(target.y/CELL),0,rows-1) };
+    const q = [start], seen = new Set([`${start.x},${start.y}`]), parent = {};
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+    while (q.length) {
+      const cur = q.shift(); if (cur.x === goal.x && cur.y === goal.y) break;
+      for (const [dx,dy] of dirs) { const nx=cur.x+dx, ny=cur.y+dy, key=`${nx},${ny}`; if(nx<0||ny<0||nx>=cols||ny>=rows||block[ny][nx]||seen.has(key)) continue; seen.add(key); parent[key]=cur; q.push({x:nx,y:ny}); }
+    }
+    let cur = goal, path = [], guard = 0;
+    while ((cur.x !== start.x || cur.y !== start.y) && guard++ < 300) { path.unshift(cur); cur = parent[`${cur.x},${cur.y}`]; if (!cur) return []; }
+    return path.slice(0, 14);
+  }
+
+  function updateFx() {
+    particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; }); particles = particles.filter(p => p.life > 0);
+    floatingTexts.forEach(t => { t.y -= .65; t.life--; }); floatingTexts = floatingTexts.filter(t => t.life > 0);
+    decoys.forEach(d => d.life--); decoys = decoys.filter(d => d.life > 0);
+  }
+  function burst(x, y, color) { for (let i=0;i<12;i++) particles.push({x,y,vx:rand(-2,2),vy:rand(-2,2),life:rand(15,32),color}); }
+  function addText(x, y, text, color) { floatingTexts.push({x,y,text,color,life:58}); }
+
+  function updateHud() {
+    catScore = Math.max(0, catScore); schrodingerScore = Math.max(0, schrodingerScore);
+    $("cat-score").textContent = Math.round(catScore); $("schro-score").textContent = Math.round(schrodingerScore);
+    $("timer").textContent = Math.max(0, Math.ceil(timeRemaining)); $("timer").classList.toggle("danger", timeRemaining < 10);
+    $("cat-powerup-ui").textContent = `CAT BUFF: ${cat.buff ? cat.buff.toUpperCase() + " " + Math.ceil(cat.buffTimer/60) + "s" : "NONE"}`;
+    $("powerup-ui").textContent = `BOX: ${schro.power.toUpperCase()} ${schro.ammo === Infinity ? "∞" : schro.ammo}`;
+  }
+
+  function endGame() {
+    isPlaying = false; updateHud();
+    catScore = Math.max(0, catScore); schrodingerScore = Math.max(0, schrodingerScore);
+    const catWins = catScore >= schrodingerScore;
+    $("winner-text").textContent = catWins ? `${$("cat-name-label").textContent} escaped the paradox!` : `${$("schro-name-label").textContent} collapsed the wavefunction!`;
+    $("final-scores").innerHTML = `<p>Cat Score: <b>${Math.round(catScore)}</b></p><p>Schrödinger Score: <b>${Math.round(schrodingerScore)}</b></p><p>Hits: ${totalHits} | Shot Accuracy: ${shotsFired ? Math.round(shotsHit / shotsFired * 100) : 0}%</p>`;
+    const badges = [];
+    if (!catWasHit) badges.push("Untouchable"); if (totalHits >= 5) badges.push("Speed Boxer"); if (comboMultiplier >= 3) badges.push("Combo Collapse"); if (catScore > 250) badges.push("Nine Lives");
+    $("achievements").innerHTML = badges.length ? badges.map(b => `<span>${b}</span>`).join("") : `<span>Quantum Rookie</span>`;
+    showScreen("game-over-screen");
+  }
+
+  function draw() {
+    drawBackground(); drawObstacles(); drawHazard(); drawPowerups(); drawDecoys(); drawObserver(); drawPlayers(); drawBoxes(); drawParticles(); drawTexts();
+  }
+  function drawBackground() {
+    ctx.fillStyle = "#050505"; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle = "#0A192F"; ctx.lineWidth = 1;
+    for (let x=0;x<W;x+=CELL) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y=0;y<H;y+=CELL) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  }
+  function drawObstacles() { ctx.save(); ctx.shadowBlur=16; ctx.shadowColor=neon.cyan; for (const o of mapObstacles) { ctx.fillStyle="rgba(0,243,255,.10)"; ctx.strokeStyle=neon.cyan; ctx.lineWidth=2; ctx.fillRect(o.x,o.y,o.w,o.h); ctx.strokeRect(o.x,o.y,o.w,o.h); } ctx.restore(); }
+  function drawHazard() { if (!hazard) return; ctx.save(); ctx.globalAlpha = .25 + Math.sin(frame*.18)*.12; ctx.fillStyle = neon.red; ctx.shadowBlur=25; ctx.shadowColor=neon.red; ctx.beginPath(); ctx.arc(hazard.x,hazard.y,hazard.r,0,Math.PI*2); ctx.fill(); ctx.strokeStyle=neon.red; ctx.lineWidth=3; ctx.stroke(); ctx.restore(); }
+  function drawPowerups() { for (const p of powerups) { ctx.save(); ctx.translate(p.x,p.y); ctx.shadowBlur=18; ctx.shadowColor=p.side==="cat"?neon.cyan:neon.magenta; ctx.strokeStyle=ctx.shadowColor; ctx.fillStyle=p.side==="cat"?"rgba(0,243,255,.18)":"rgba(255,0,234,.18)"; ctx.lineWidth=3; if (p.side==="cat") { ctx.beginPath(); ctx.arc(0,0,13+Math.sin(frame*.12)*2,0,Math.PI*2); ctx.fill(); ctx.stroke(); } else { ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(15,12); ctx.lineTo(-15,12); ctx.closePath(); ctx.fill(); ctx.stroke(); } ctx.restore(); } }
+  function drawDecoys() { ctx.save(); for (const d of decoys) { ctx.globalAlpha = d.life/32*.35; ctx.shadowBlur=12; ctx.shadowColor=neon.cyan; ctx.drawImage(imgCat,d.x-20,d.y-20,40,40); } ctx.restore(); }
+  function drawObserver() { if (!schro.observing) return; ctx.save(); ctx.strokeStyle=neon.cyan; ctx.globalAlpha=.5+.2*Math.sin(frame*.2); ctx.shadowBlur=20; ctx.shadowColor=neon.cyan; ctx.beginPath(); ctx.arc(schro.x,schro.y,70+Math.sin(frame*.1)*5,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+  function drawPlayers() { drawSprite(imgCat, cat, cat.buff === "Ghost" ? .45 : 1, neon.cyan); drawSprite(imgSchro, schro, 1, neon.magenta); }
+  function drawSprite(img, e, alpha, glow) { ctx.save(); ctx.globalAlpha=alpha; ctx.shadowBlur=18; ctx.shadowColor=glow; ctx.drawImage(img, e.x-e.size/2, e.y-e.size/2, e.size, e.size); ctx.restore(); }
+  function drawBoxes() { for (const b of boxes) { ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(Math.atan2(b.vy,b.vx)+Math.PI/4); ctx.shadowBlur=14; ctx.shadowColor=b.kind==="Tracking"?neon.cyan:neon.orange; ctx.fillStyle=b.kind==="Heavy"?"rgba(255,159,28,.8)":"rgba(255,255,255,.85)"; ctx.strokeStyle=neon.magenta; ctx.lineWidth=2; ctx.fillRect(-b.size/2,-b.size/2,b.size,b.size); ctx.strokeRect(-b.size/2,-b.size/2,b.size,b.size); ctx.restore(); } }
+  function drawParticles() { for (const p of particles) { ctx.globalAlpha = p.life/32; ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,4,4); } ctx.globalAlpha=1; }
+  function drawTexts() { ctx.save(); ctx.font="bold 16px Courier New"; ctx.textAlign="center"; for (const t of floatingTexts) { ctx.globalAlpha=t.life/58; ctx.fillStyle=t.color; ctx.shadowBlur=10; ctx.shadowColor=t.color; ctx.fillText(t.text,t.x,t.y); } ctx.restore(); }
+
+  showScreen("mode-screen"); draw();
+})();
