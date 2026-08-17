@@ -1,64 +1,218 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Schrödinger Paradox</title>
-  <link rel="stylesheet" href="css/styles.css" />
-</head>
-<body>
-  <main id="arcade-shell">
-    <header class="title-panel">
-      <h1>🐈 The Schrödinger Paradox</h1>
-      <p>Cyberpunk quantum pursuit. Survive the experiment, or box the anomaly.</p>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Schrödinger Paradox</title>
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <main id="arcade-shell">
+      <header class="title-panel">
+        <div class="brand-row">
+          <span class="brand-mark">Gamecraft 2026</span>
+          <h1>The Schrödinger Paradox</h1>
+        </div>
+        <p>
+          Cyberpunk quantum pursuit. Survive the experiment, or box the anomaly.
+        </p>
+      </header>
 
-    <section id="game-container" aria-label="The Schrödinger Paradox game area">
-      <canvas id="gameCanvas" width="900" height="600"></canvas>
+      <section
+        id="game-container"
+        aria-label="The Schrödinger Paradox game area"
+      >
+        <canvas id="gameCanvas" width="900" height="600"></canvas>
 
-      <div id="ui-layer">
-        <div class="score-card cyan"><span id="cat-name-label">Cat</span><strong id="cat-score">0</strong></div>
-        <div id="timer" class="timer">60</div>
-        <div class="score-card magenta"><span id="schro-name-label">Schrödinger</span><strong id="schro-score">0</strong></div>
-      </div>
-      <div id="cat-powerup-ui" class="hud-chip">CAT BUFF: NONE</div>
-      <div id="powerup-ui" class="hud-chip">BOX: STANDARD ∞</div>
+        <div id="ui-layer">
+          <div class="score-card cyan">
+            <span id="cat-name-label">Cat</span
+            ><strong id="cat-score">0</strong>
+          </div>
+          <div id="timer" class="timer">60</div>
+          <div class="score-card magenta">
+            <span id="schro-name-label">Schrödinger</span
+            ><strong id="schro-score">0</strong>
+          </div>
+        </div>
+        <div id="cat-powerup-ui" class="hud-chip">CAT BUFF: NONE</div>
+        <div id="powerup-ui" class="hud-chip">BOX: STANDARD ∞</div>
 
-      <div id="mode-screen" class="screen overlay">
-        <h2>Select Experiment</h2>
-        <button data-mode="solo-cat" class="neon-btn">Solo Cat: Evade AI</button>
-        <button data-mode="solo-schro" class="neon-btn">Solo Schrödinger: Hunt AI</button>
-        <button data-mode="multi" class="neon-btn">Local Multiplayer PvP</button>
-      </div>
+        <div id="mode-screen" class="screen overlay">
+          <h2>Select Experiment</h2>
+          <button data-mode="solo-cat" class="neon-btn">
+            Solo Cat: Evade AI
+          </button>
+          <button data-mode="solo-schro" class="neon-btn">
+            Solo Schrödinger: Hunt AI
+          </button>
+          <button data-mode="multi" class="neon-btn">
+            Local Multiplayer PvP
+          </button>
+          <button
+            id="view-leaderboard-btn"
+            class="ghost-btn"
+            style="margin-top: 20px"
+          >
+            🏆 Hall of Paradox
+          </button>
+        </div>
 
-      <div id="name-screen" class="screen overlay hidden">
-        <h2>Identity Calibration</h2>
-        <label>Cat Name <input id="cat-name" maxlength="15" placeholder="Neon Cat" /></label>
-        <label>Schrödinger Name <input id="schro-name" maxlength="15" placeholder="Dr. Schrödinger" /></label>
-        <div class="row"><button id="back-to-mode" class="ghost-btn">Back</button><button id="names-next" class="neon-btn">Continue</button></div>
-      </div>
+        <div id="name-screen" class="screen overlay hidden">
+          <h2>Identity Calibration</h2>
 
-      <div id="instructions-screen" class="screen overlay hidden">
-        <h2 id="instructions-title">Rules</h2>
-        <div id="instructions-body"></div>
-        <button id="start-game" class="neon-btn">Start Match</button>
-      </div>
+          <div id="cat-name-field" class="name-field">
+            <label>
+              Cat Name
+              <input
+                id="cat-name"
+                maxlength="15"
+                placeholder="Enter Cat name"
+              />
+            </label>
+          </div>
 
-      <div id="game-over-screen" class="screen overlay hidden">
-        <h2 id="winner-text">Winner</h2>
-        <div id="final-scores"></div>
-        <div id="achievements"></div>
-        <div class="row"><button id="replay" class="neon-btn">Replay</button><button id="change-mode" class="ghost-btn">Change Mode</button></div>
-      </div>
-    </section>
+          <div id="schro-name-field" class="name-field">
+            <label>
+              Schrödinger Name
+              <input
+                id="schro-name"
+                maxlength="15"
+                placeholder="Enter Schrödinger name"
+              />
+            </label>
+          </div>
 
-    <section id="audio-controls">
-      <button id="mute-btn" class="ghost-btn">Mute</button>
-      <label>Music Volume <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.35" /></label>
-      <audio id="bgm" loop preload="auto" src="assets/bgaudio.mp3"></audio>
-    </section>
-  </main>
+          <div class="row">
+            <button id="back-to-mode" class="ghost-btn">
+              RETURN TO REALITY</button
+            ><button id="names-next" class="neon-btn">START OBSERVATION</button>
+          </div>
+        </div>
 
-  <script src="js/game.js"></script>
-</body>
+        <div id="instructions-screen" class="screen overlay hidden">
+          <h2 id="instructions-title">Rules</h2>
+          <div id="instructions-body"></div>
+          <button id="start-game" class="neon-btn">BEGIN EXPERIMENT</button>
+        </div>
+
+        <div id="game-over-screen" class="screen overlay hidden">
+          <h2 id="winner-text">Winner</h2>
+          <div id="final-scores"></div>
+          <div id="achievements"></div>
+
+          <div class="match-summary-cards">
+            <div class="summary-card cat-card" id="summary-cat-card">
+              <span class="card-role">🐱 CAT</span>
+              <span class="card-name" id="final-cat-name">Cat</span>
+              <span class="card-score" id="final-cat-score">0</span>
+            </div>
+            <div class="vs-divider">VS</div>
+            <div class="summary-card schro-card" id="summary-schro-card">
+              <span class="card-role">🔬 SCHRÖDINGER</span>
+              <span class="card-name" id="final-schrodinger-name"
+                >Schrödinger</span
+              >
+              <span class="card-score" id="final-schrodinger-score">0</span>
+            </div>
+          </div>
+
+          <div class="leaderboard-section">
+            <div class="leaderboard-header">
+              <h3 class="leaderboard-title">QUANTUM LEADERBOARD</h3>
+              <div class="leaderboard-tabs" id="gameover-leaderboard-tabs">
+                <button class="tab-btn active" data-filter="all">ALL</button>
+                <button class="tab-btn" data-filter="solo-cat">CAT</button>
+                <button class="tab-btn" data-filter="solo-schro">
+                  SCHRÖDINGER
+                </button>
+                <button class="tab-btn" data-filter="multi">VERSUS</button>
+              </div>
+            </div>
+            <div class="leaderboard-table-container">
+              <table class="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>PLAYER</th>
+                    <th>ROLE</th>
+                    <th>MODE</th>
+                    <th>SCORE</th>
+                    <th>DATE</th>
+                  </tr>
+                </thead>
+                <tbody id="gameover-leaderboard-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="row">
+            <button id="replay" class="neon-btn">TEST AGAIN</button
+            ><button id="change-mode" class="ghost-btn">
+              RETURN TO REALITY
+            </button>
+          </div>
+        </div>
+
+        <div id="leaderboard-screen" class="screen overlay hidden">
+          <h2>HALL OF PARADOX</h2>
+          <h3 style="color: var(--orange); margin-top: 0">QUANTUM ARCHIVES</h3>
+          <div class="leaderboard-section main-leaderboard-section">
+            <div class="leaderboard-header">
+              <div class="leaderboard-tabs" id="main-leaderboard-tabs">
+                <button class="tab-btn active" data-filter="all">ALL</button>
+                <button class="tab-btn" data-filter="solo-cat">CAT</button>
+                <button class="tab-btn" data-filter="solo-schro">
+                  SCHRÖDINGER
+                </button>
+                <button class="tab-btn" data-filter="multi">VERSUS</button>
+              </div>
+              <button id="reset-leaderboard-btn" class="danger-btn">
+                RESET DATA
+              </button>
+            </div>
+            <div class="leaderboard-table-container full-leaderboard">
+              <table class="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>PLAYER</th>
+                    <th>ROLE</th>
+                    <th>MODE</th>
+                    <th>SCORE</th>
+                    <th>DATE</th>
+                  </tr>
+                </thead>
+                <tbody id="main-leaderboard-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <button id="leaderboard-back-btn" class="ghost-btn">
+            RETURN TO REALITY
+          </button>
+        </div>
+      </section>
+
+      <section id="audio-controls">
+        <button id="mute-btn" class="ghost-btn">Mute</button>
+        <label
+          >Music Volume
+          <input
+            id="volume-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0.35"
+        /></label>
+        <audio id="bgm" loop preload="auto" src="assets/bgaudio.mp3"></audio>
+      </section>
+    </main>
+
+    <script src="js/game.js"></script>
+  </body>
 </html>
