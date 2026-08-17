@@ -350,7 +350,7 @@
 
     // Move to a clean firing lane around the Cat. This solves the wall-camping case:
     // the AI goes around the obstacle, then fires only when line of sight is clear.
-    const firingSpot = findFiringPosition();
+    const firingSpot = findShootingPosition();
     if (firingSpot) {
       aiMoveWithPath(schro, firingSpot);
       return;
