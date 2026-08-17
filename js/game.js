@@ -454,9 +454,9 @@
     $("cat-name-label").textContent = catName;
     $("schro-name-label").textContent = schroName;
     const lines = {
-      "solo-cat": `<b>${catName}</b>: Arrow keys to move, Shift to dash. Survive 60 seconds. AI Schrödinger hunts and shoots.<br><br>Score: Cat +5 per second, Schrödinger +100 per hit. Missed AI shots cost -20.`,
-      "solo-schro": `<b>${schroName}</b>: Arrow keys to move, Space to shoot. Box the AI Cat before time runs out.<br><br>Stand still for 90 frames to trigger Observer Effect and slow the Cat. Misses cost -50.`,
-      multi: `<b>${catName}</b>: WASD move, Shift dash.<br><b>${schroName}</b>: Arrow keys move, Space shoot.<br><br>Local PvP. Cat survives, Schrödinger boxes. Misses cost -50.`,
+      "solo-cat": `<b>${catName}</b>: Arrow keys to move, Shift to dash. Survive 60 seconds. AI Schrödinger hunts and shoots.<br><br>Score: Cat +5 per second, Schrödinger +100 per hit. Missed AI shots cost -20. Cat hit by box costs -20.`,
+      "solo-schro": `<b>${schroName}</b>: Arrow keys to move, Space to shoot. Box the AI Cat before time runs out.<br><br>Score: Cat +5 per second, Schrödinger +100 per hit. Missed Schrödinger shots cost -50. Cat hit by box costs -20.`,
+      multi: `<b>${catName}</b>: WASD move, Shift dash.<br><b>${schroName}</b>: Arrow keys move, Space shoot.<br><br>Local PvP. Cat survives, Schrödinger boxes. Score: Cat +5 per second, Schrödinger +100 per hit. Missed Schrödinger shots cost -50. Cat hit by box costs -20.`,
     }[selectedMode];
     $("instructions-title").textContent =
       selectedMode === "multi" ? "Local PvP Rules" : "Solo Mode Rules";
@@ -1038,14 +1038,48 @@
   }
 
   function aiMoveWithPath(e, target) {
+    if (!target) return false;
+
+    const targetKey = `${Math.round(target.x)},${Math.round(target.y)}`;
+    const distToTarget = Math.hypot(e.x - target.x, e.y - target.y);
+
+    // If the AI is already effectively at the target, stop moving instead of
+    // orbiting around it forever. This is especially important for power-up pickups.
+    if (distToTarget < 18) {
+      e.aiPath = [];
+      e.aiTargetKey = null;
+      e.aiStallFrames = 0;
+      return true;
+    }
+
+    if (e.aiTargetKey === targetKey && e.aiLastTargetDist !== undefined) {
+      const delta = Math.abs(e.aiLastTargetDist - distToTarget);
+      if (delta < 2 && distToTarget < 70) {
+        e.aiStallFrames = (e.aiStallFrames || 0) + 1;
+        if (e.aiStallFrames > 18) {
+          e.aiPath = [];
+          e.aiRecalc = 0;
+          e.aiTargetKey = null;
+          return false;
+        }
+      } else {
+        e.aiStallFrames = 0;
+      }
+    }
+    e.aiLastTargetDist = distToTarget;
+    e.aiTargetKey = targetKey;
+
     if (e.aiRecalc-- <= 0 || !e.aiPath.length) {
-      e.aiPath = bfsPath(e, target);
+      const pathTarget = pointBlocked(target.x, target.y, e.size + 8)
+        ? bestEscapePoint()
+        : target;
+      e.aiPath = bfsPath(e, pathTarget);
       e.aiRecalc = 20;
     }
     const n = e.aiPath[0];
     if (!n) {
       e.aiRecalc = 0;
-      return false; // No path found
+      return false;
     }
     const tx = n.x * CELL + CELL / 2,
       ty = n.y * CELL + CELL / 2;

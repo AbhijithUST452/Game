@@ -1,201 +1,158 @@
-# 🐱 The Schrödinger Paradox
+# The Schrödinger Paradox
 
-> A fast-paced, cyberpunk-themed 2D browser game where a quantum cat tries to survive Schrödinger's relentless box experiments.
-
----
-
-## 👥 Team
-
-**Team Name:** Schrödinger
-
-**Members:**
-
-- Abhijith
-- Don
-- Rahul
-- Ashish
+A cyberpunk arcade survival game where the Cat must survive a 60-second run while Schrödinger tries to box it using quantum-powered shots, power-ups, and tactical movement.
 
 ---
 
-## 📖 Brief Description
+## Team / Participant
 
-The Schrödinger Paradox is a retro-futuristic, neon-drenched arcade game inspired by the famous Schrödinger's Cat thought experiment. Players take on the role of either the Cat — who must evade capture — or Schrödinger — the physicist who must box the cat using quantum-powered projectiles. The game features three distinct modes: Solo Cat, Solo Schrödinger, and a local Versus multiplayer mode.
-
----
-
-## 🎯 Objective & Rules
-
-- **As the Cat:** Survive for 60 seconds while dodging Schrödinger's boxes. The longer you survive, the higher your score. Collect powerups to gain temporary abilities.
-- **As Schrödinger:** Hit the Cat with your boxes as many times as possible within 60 seconds. Unlock special box types (Multi, Tracking, Heavy) via powerups to increase your odds.
-
-### Key Rules:
-
-- The match lasts exactly **60 seconds**.
-- The Cat earns **+5 points per second** survived.
-- Schrödinger earns **+100 points per hit** (with combo multipliers for rapid hits).
-- **Missed shots** are penalized: **-50 points** in Multiplayer & Solo Schrödinger, **-20 points** in Solo Cat.
-- Multi-shot volleys (3 boxes) are penalized as a **single miss** only if **all 3 boxes** miss. If any one hits, no penalty.
-- The Cat loses **-20 points** per hit taken.
-- Schrödinger's **Observer Effect**: standing still for ~1.5 seconds slows the Cat dramatically.
-- A **Quantum Hazard Zone** (red circle) appears periodically — it drains Cat score and slows Schrödinger.
-- Walls block movement and destroy boxes on contact.
+- Team Name: Schrödinger
+- Team Members:
+  - Abhijith Kannan
+  - Don Jacob Vellathottam
+  - Rahul Divakaran
+  - Ashish Satheesh
 
 ---
 
-## 🕹️ How to Play
+## Brief Description
 
-### Game Modes
-
-| Mode                  | Description                                                   |
-| --------------------- | ------------------------------------------------------------- |
-| **Solo: The Cat**     | You play as the Cat. Evade the AI-controlled Schrödinger.     |
-| **Solo: Schrödinger** | You play as Schrödinger. Box the AI-controlled Cat.           |
-| **Versus Mode**       | Local 2-player. Player 1 is the Cat, Player 2 is Schrödinger. |
-
-1. Select a game mode from the main menu.
-2. Enter your player name(s).
-3. Read the experiment protocols, then click **COMMENCE EXPERIMENT**.
-4. Survive or dominate for 60 seconds!
-5. After the round, choose **RESET TIMELINE** to replay or **MAIN MENU** to switch modes.
+The Schrödinger Paradox is a fast-paced browser game inspired by the Schrödinger's cat. Players can choose between solo and local multiplayer gameplay, fight through obstacle-heavy arenas, collect power-ups, and outplay the opponent under time pressure. The game uses a neon cyberpunk visual theme with sound-driven action and AI-controlled challenge logic.
 
 ---
 
-## 🎮 Controls
+## Objective and Rules
 
-### Multiplayer Mode
+### Objective
 
-| Action     | Cat (Player 1) | Schrödinger (Player 2) |
-| ---------- | -------------- | ---------------------- |
-| Move Up    | `W`            | `↑`                    |
-| Move Down  | `S`            | `↓`                    |
-| Move Left  | `A`            | `←`                    |
-| Move Right | `D`            | `→`                    |
-| Dash       | `Shift`        | —                      |
-| Throw Box  | —              | `Space`                |
+- In Solo Cat mode: survive as long as possible while avoiding Schrödinger's boxes.
+- In Solo Schrödinger mode: box the Cat before the clock ends.
+- In Local Multiplayer mode: one player controls the Cat and the other controls Schrödinger.
 
-### Solo Modes (Both Characters)
+### Rules
 
-| Action                       | Key                        |
-| ---------------------------- | -------------------------- |
-| Move                         | `↑` `↓` `←` `→` Arrow Keys |
-| Dash (Cat only)              | `Shift`                    |
-| Throw Box (Schrödinger only) | `Space`                    |
-
----
-
-## 📊 Scoring Rules
-
-| Event                                        | Points                                      |
-| -------------------------------------------- | ------------------------------------------- |
-| Cat survives per second                      | +5                                          |
-| Schrödinger hits Cat                         | +100 × combo multiplier                     |
-| Cat hit by box                               | -20                                         |
-| Missed shot (Solo Cat / AI)                  | -20                                         |
-| Missed shot (Multiplayer / Solo Schrödinger) | -50                                         |
-| Multi-shot volley — all 3 miss               | -50 or -20 (mode-dependent, single penalty) |
-| Multi-shot volley — at least 1 hit           | No penalty                                  |
-| Cat inside Quantum Hazard Zone               | -2 per tick                                 |
-
-### Combo System
-
-Hitting the Cat multiple times within 3 seconds increases the combo multiplier (x2, x3, etc.), dramatically boosting Schrödinger's score per hit.
-
-### Powerups
-
-**Cat Powerups** (orange/white/magenta orbs):
-| Powerup | Effect |
-|---------|--------|
-| 🟠 Zoomies | 1.8× speed boost for a limited time |
-| ⚪ Ghost | Become semi-transparent and phase through walls & boxes |
-| 🟣 Wormhole | Instantly teleport to a random safe location |
-
-**Schrödinger Powerups** (red/cyan/orange orbs):
-| Powerup | Effect |
-|---------|--------|
-| 🔴 Multi | Fire 3 boxes in a spread pattern (3 ammo) |
-| 🔵 Tracking | Boxes home in on the Cat (3 ammo) |
-| 🟠 Heavy | Fire a large, slow box (3 ammo) |
+- Each round lasts 60 seconds.
+- The Cat gains +5 points for each second survived.
+- Schrödinger gains +100 points for each successful hit.
+- A Cat hit by a box costs -20 points.
+- Missed shots are penalized depending on the mode.
+- Power-ups appear periodically and affect movement, survivability, or attack strength.
+- Walls block movement and can destroy boxes on impact.
+- Radioactive zones appear during the match and damage both players over time.
+- The game ends when the timer reaches 0 and the score screen is displayed.
 
 ---
 
-## 🛠️ Technologies Used
+## How to Play
 
-| Category       | Technology                                          |
-| -------------- | --------------------------------------------------- |
-| Structure      | HTML5                                               |
-| Styling        | Vanilla CSS3                                        |
-| Logic          | Vanilla JavaScript (ES6+)                           |
-| Rendering      | HTML5 Canvas API                                    |
-| Audio          | Web Audio API (SFX), HTML5 Audio (Background Music) |
-| AI Pathfinding | Custom BFS (Breadth-First Search) grid pathfinder   |
-
-No external libraries or frameworks were used. The entire game is built with vanilla HTML, CSS, and JavaScript.
-
----
-
-## 🤖 AI Tool Used
-
-**Google Gemini (Antigravity IDE)** — Used for pair programming, debugging, implementing AI pathfinding (BFS), sound effects system, game balancing, and iterative feature development.
+1. Open the game in a browser.
+2. Choose a mode from the home screen:
+   - Solo Cat
+   - Solo Schrödinger
+   - Local Multiplayer PvP
+3. Enter the required player name(s).
+4. Press the start observation button to begin the match.
+5. Survive or box the opponent for the full 60 seconds.
+6. After the timer ends, view the score summary and leaderboard.
 
 ---
 
-## 🚀 Launch Instructions
+## Controls
 
-1. Clone or download the project folder.
-2. Ensure the following file structure exists:
-   ```
-   multiplayer/
-   ├── index.html
-   ├── README.md
-   ├── css/
-   │   └── styles.css
-   ├── js/
-   │   └── game.js
-   └── assets/
-       ├── cat.png
-       ├── schrodinger.png
-       └── bgaudio.mp3
-   ```
-3. Open `index.html` in a modern web browser.
-4. **No build step, server, or installation required** — it runs directly from the file system.
+### Solo Cat
 
-> **Note:** Background music requires a user interaction (clicking a button) before it can play, due to browser autoplay policies.
+- Move: Arrow keys
+- Dash: Shift
+
+### Solo Schrödinger
+
+- Move: Arrow keys
+- Shoot: Space
+
+### Local Multiplayer
+
+- Cat: W A S D to move, Shift to dash
+- Schrödinger: Arrow keys to move, Space to shoot
 
 ---
 
-## 🌐 Browsers Tested
+## Scoring Rules
 
-| Browser                 | Status           |
-| ----------------------- | ---------------- |
-| Google Chrome (latest)  | ✅ Fully Working |
-| Microsoft Edge (latest) | ✅ Fully Working |
+- Cat survives per second: +5
+- Schrödinger hit on Cat: +100
+- Cat hit by box: -20
+- Missed Schrödinger shot on Solo Cat Mode: -20
+- Missed Schrödinger shot on Solo Schrödinger and Local Multiplayer Mode: -50
+- Cat inside hazard zone: -2 per tick
+- Multi-hit combos can increase score gain when executed quickly in succession
 
----
+Power-ups include:
 
-## ⚠️ Known Limitations
-
-- **Local multiplayer only** — no online/networked multiplayer support.
-- **Fixed resolution** — the game canvas is 900×600px and does not scale responsively to different screen sizes.
-- **Background music** may not autoplay on first load due to browser autoplay restrictions; requires a user click to start.
-- **AI pathfinding** uses a grid-based BFS which recomputes every 20 frames; in rare edge cases with very tight wall configurations, the AI may briefly hesitate.
-- **No mobile support** — the game requires a physical keyboard for input.
-- **Ghost ability edge case** — if the Cat's Ghost powerup expires while inside a wall, the Cat is teleported to a safe location (by design, not a bug).
+- Cat power-ups: Zoomies, Ghost, Wormhole
+- Schrödinger power-ups: Multi, Tracking, Heavy
 
 ---
 
-## 📜 Libraries & Asset Credits
+## Technologies Used
 
-- **Libraries:** None — 100% vanilla HTML/CSS/JavaScript.
-- **Cat sprite:** Custom asset (`assets/cat.png`).
-- **Schrödinger sprite:** Custom asset (`assets/schrodinger.png`).
-- **Box sprite:** Inline SVG (procedurally generated).
-- **Background music:** `assets/bgaudio.mp3` (custom/provided audio file).
-- **Sound effects:** Procedurally generated using the Web Audio API (oscillator-based synthesis — no audio files needed).
-- **Font:** System monospace (`Courier New`).
+- HTML5
+- CSS3
+- JavaScript (vanilla ES6+)
+- HTML5 Canvas for rendering
+- Web Audio API for synthesized sound effects
+- Custom BFS pathfinding logic for AI movement
+- Local Storage for leaderboard persistence
 
 ---
 
-<p align="center">
-  <em>"One does not simply observe a cat without changing its state."</em><br>
-  — Team Schrödinger, 2026
-</p>
+## AI Tool Used
+
+- Microsoft 365 Copilot
+
+---
+
+## Launch Instructions
+
+1. Open the project folder.
+2. Go to the game folder: `Game`
+3. Open `index.html` in a modern browser.
+4. No build step or installation is required.
+
+> The game runs directly in the browser from the project files.
+
+---
+
+## Browsers Tested
+
+- Google Chrome: Tested and working
+- Microsoft Edge: Tested and working
+- Firefox: Not officially validated in this project run
+
+---
+
+## Known Limitations
+
+- The game is designed for desktop keyboard input.
+- Local multiplayer is supported but online multiplayer is not.
+- Some AI pathfinding edge cases may still occur around dense obstacles.
+- Sometimes background audio may require a user click before playing because of browser autoplay policies.
+- The layout is optimized for a fixed desktop canvas rather than full responsive mobile support.
+- Some response, audio and gameplay bugs are present.
+
+---
+
+## Libraries and Asset Credits
+
+- Libraries: None required; the project is built with vanilla web technologies.
+- Cat sprite: custom asset in the project assets folder
+- Schrödinger sprite: custom asset in the project assets folder
+- Sound effects: generated using the Web Audio API
+- Background music: Cyberblade by max brhon - Licensed as a non-copyright / royalty-free track.
+- Fonts: system monospace styling
+- Art direction: custom neon cyberpunk styling prepared for the game interface and gameplay HUD
+
+---
+
+## Final Note
+
+The Schrödinger Paradox combines fast reflexes, tactical movement, AI behavior, and arcade scoring in a compact browser game built for quick play sessions and competitive local matches.
